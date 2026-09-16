@@ -105,8 +105,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         shownAt = now
         refresh()
         content.place(on: self)
-        NSRunningApplication.current.activate(options: .activateAllWindows)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         orderFrontRegardless()
         makeKeyAndOrderFront(nil)
         content.focus(on: self, end: false)
