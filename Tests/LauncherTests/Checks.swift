@@ -109,6 +109,17 @@ import Testing
         }
         try Data(#"{"valid":"chrome","invalid":1}"#.utf8).write(to: aliasFile)
         precondition(History.load(dataDir: dir).aliasesFor("chrome").isEmpty)
-        print("PASS: catalog freshness, matching, selection order, aliases, recency and persistence")
+
+        let screen = CGRect(x: 0, y: 0, width: 1800, height: 900)
+        for edge in [Edge.left, .right] {
+            let stages = Tile.stages(edge, screen: screen)
+            precondition(stages.map(\.width) == [900, 1200, 600, 1800])
+            precondition(stages.allSatisfy { $0.height == 900 && (edge == .left ? $0.minX == 0 : $0.maxX == 1800) })
+            precondition(Tile.next(edge, current: CGRect(x: 40, y: 40, width: 200, height: 200), screen: screen) == stages[0])
+            for (index, stage) in stages.enumerated() {
+                precondition(Tile.next(edge, current: stage, screen: screen) == stages[(index + 1) % stages.count])
+            }
+        }
+        print("PASS: catalog freshness, matching, selection order, aliases, recency, persistence and tiling")
     }
 }

@@ -10,8 +10,14 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     private var selected = 0
     private var shownAt: UInt64?
     private var monitor: Any?
-    private var hotkey: EventHotKeyRef?
+    private var hotkeys: [EventHotKeyRef] = []
     private var handler: EventHandlerRef?
+
+    private static let shortcuts: [(key: Int, modifiers: Int, label: String, run: @MainActor (Launcher) -> Void)] = [
+        (kVK_Space, cmdKey, "Command+Space", { $0.toggle() }),
+        (kVK_ANSI_Semicolon, shiftKey | optionKey, "Shift+Option+Semicolon", { _ in Tile.snap(.left) }),
+        (kVK_ANSI_Quote, shiftKey | optionKey, "Shift+Option+Quote", { _ in Tile.snap(.right) }),
+    ]
 
     override var canBecomeKey: Bool {
         true
@@ -30,21 +36,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
 
     func applicationDidFinishLaunching(_: Notification) {
         installMenu()
-        var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let status = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
-            guard let context else { return OSStatus(eventNotHandledErr) }
-            MainActor.assumeIsolated { Unmanaged<Launcher>.fromOpaque(context).takeUnretainedValue().toggle() }
-            return noErr
-        }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
-        if status == noErr {
-            let result = RegisterEventHotKey(UInt32(kVK_Space), UInt32(cmdKey),
-                                             EventHotKeyID(signature: 0x4C43_4852, id: 1), GetApplicationEventTarget(), 0, &hotkey)
-            if result != noErr {
-                fputs("Launcher: Command+Space unavailable: OSStatus \(result)\n", stderr)
-            }
-        } else {
-            fputs("Launcher: could not create hotkey manager\n", stderr)
-        }
+        registerShortcuts()
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             self?.handle(event) == false ? nil : event
         }
@@ -57,12 +49,45 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         }
     }
 
+    private func registerShortcuts() {
+        var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            var pressed = EventHotKeyID()
+            guard let context, let event,
+                  GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                    nil, MemoryLayout<EventHotKeyID>.size, nil, &pressed) == noErr else {
+                return OSStatus(eventNotHandledErr)
+            }
+            MainActor.assumeIsolated {
+                let index = Int(pressed.id) - 1
+                guard Launcher.shortcuts.indices.contains(index) else { return }
+                Launcher.shortcuts[index].run(Unmanaged<Launcher>.fromOpaque(context).takeUnretainedValue())
+            }
+            return noErr
+        }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        guard status == noErr else {
+            fputs("Launcher: could not create hotkey manager\n", stderr)
+            return
+        }
+        for (index, shortcut) in Launcher.shortcuts.enumerated() {
+            var hotkey: EventHotKeyRef?
+            let result = RegisterEventHotKey(UInt32(shortcut.key), UInt32(shortcut.modifiers),
+                                             EventHotKeyID(signature: 0x4C43_4852, id: UInt32(index + 1)),
+                                             GetApplicationEventTarget(), 0, &hotkey)
+            if result == noErr, let hotkey {
+                hotkeys.append(hotkey)
+            } else {
+                fputs("Launcher: \(shortcut.label) unavailable: OSStatus \(result)\n", stderr)
+            }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         false
     }
 
     func applicationWillTerminate(_: Notification) {
-        if let hotkey {
+        for hotkey in hotkeys {
             UnregisterEventHotKey(hotkey)
         }
         if let handler {

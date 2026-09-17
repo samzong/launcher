@@ -19,7 +19,9 @@ app: build
 	cp Info.plist "$(APP)/Contents/Info.plist"
 	cp Resources/AppIcon.icns "$(APP)/Contents/Resources/AppIcon.icns"
 	cp .build/release/Launcher "$(APP)/Contents/MacOS/Launcher"
-	codesign --force --sign - "$(APP)"
+	@identity=$$(security find-identity -v -p codesigning 2>/dev/null | awk -F '"' '/Apple Development: / { print $$2; exit }'); \
+	echo "Launcher: signing as $${identity:-adhoc, accessibility grant resets on every install}"; \
+	codesign --force --sign "$${identity:--}" "$(APP)"
 
 dmg: app
 	rm -rf "$(DIST)/stage" "$(DMG)"
