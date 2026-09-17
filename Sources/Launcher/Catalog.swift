@@ -84,9 +84,6 @@ enum Catalog {
         if let flag = dict["LSBackgroundOnly"], isTruthy(flag) {
             return nil
         }
-        if let package = dict["CFBundlePackageType"] as? String, package != "APPL" {
-            return nil
-        }
         let stem = split((path as NSString).lastPathComponent).stem
         let names = [dict["CFBundleDisplayName"] as? String, dict["CFBundleName"] as? String, stem]
             .compactMap(\.self)
