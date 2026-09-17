@@ -232,10 +232,7 @@ final class PanelContent: NSView {
         switch entry.kind {
         case .quit:
             image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-        case .settings:
-            image = NSWorkspace.shared.icon(forFile: "/System/Applications/System Settings.app").copy() as? NSImage
-            image?.size = NSSize(width: 32, height: 32)
-        case .app:
+        case .app, .settings:
             image = NSWorkspace.shared.icon(forFile: entry.path).copy() as? NSImage
             image?.size = NSSize(width: 32, height: 32)
         }
