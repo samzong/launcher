@@ -9,7 +9,6 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     private var results: [Entry] = []
     private var selected = 0
     private var shownAt: UInt64?
-    private var inputSource: TISInputSource?
     private var monitor: Any?
     private var hotkey: EventHotKeyRef?
     private var handler: EventHandlerRef?
@@ -63,7 +62,6 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     func applicationWillTerminate(_: Notification) {
-        restoreInputSource()
         if let hotkey {
             UnregisterEventHotKey(hotkey)
         }
@@ -110,24 +108,11 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         orderFrontRegardless()
         makeKeyAndOrderFront(nil)
         content.focus(on: self, end: false)
-        let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
-        if let ascii = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue() {
-            TISSelectInputSource(ascii)
-            inputSource = current
-        }
-    }
-
-    private func restoreInputSource() {
-        if let inputSource {
-            TISSelectInputSource(inputSource)
-        }
-        inputSource = nil
     }
 
     private func dismiss() {
         guard shownAt != nil else { return }
         shownAt = nil
-        restoreInputSource()
         orderOut(nil)
         NSRunningApplication.current.hide()
     }

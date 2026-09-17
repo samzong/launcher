@@ -8,7 +8,38 @@ private let radius: CGFloat = 20
 private let searchInset: CGFloat = 24
 private let maxRows = 8
 
+private final class DirectEditor: NSTextView {
+    override func keyDown(with event: NSEvent) {
+        guard event.modifierFlags.isDisjoint(with: [.command, .control]) else { return super.keyDown(with: event) }
+        let typed = event.characters ?? ""
+        if typed.isEmpty {
+            return
+        }
+        if typed.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F && !(0xF700 ... 0xF8FF).contains($0.value) }) {
+            insertText(typed, replacementRange: selectedRange())
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
 private final class SearchCell: NSTextFieldCell {
+    private let editor: DirectEditor = {
+        let editor = DirectEditor()
+        editor.isFieldEditor = true
+        editor.isRichText = false
+        editor.usesFontPanel = false
+        editor.isAutomaticTextCompletionEnabled = false
+        editor.isAutomaticSpellingCorrectionEnabled = false
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        return editor
+    }()
+
+    override func fieldEditor(for _: NSView) -> NSTextView? {
+        editor
+    }
+
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
         centered(super.drawingRect(forBounds: rect))
     }
