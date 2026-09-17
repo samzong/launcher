@@ -2,6 +2,7 @@ import Foundation
 
 enum Kind {
     case app
+    case settings
     case quit
 }
 
@@ -57,7 +58,12 @@ func plainInteger(_ value: Any?) -> NSNumber? {
 }
 
 enum Catalog {
-    static func scan(roots: [String]? = nil) -> [Entry] {
+    static let paneRoot = "/System/Library/ExtensionKit/Extensions"
+    private static let paneExtensionPoint = "com.apple.Settings.extension.ui"
+    private static let paneNames = ["com.apple.Battery-Settings.extension": "Battery"]
+    private static let skippedPanes: Set<String> = ["com.apple.HeadphoneSettings"]
+
+    static func scan(roots: [String]? = nil, panes: String? = paneRoot) -> [Entry] {
         var seen = Set<NSString>()
         var apps: [Entry] = []
         for root in roots ?? defaultRoots() {
@@ -65,6 +71,10 @@ enum Catalog {
                 guard let entry = parse(path), seen.insert(entry.id as NSString).inserted else { continue }
                 apps.append(entry)
             }
+        }
+        for path in panes.map({ bundles(in: $0, depth: 1, ext: "appex") }) ?? [] {
+            guard let entry = pane(path), seen.insert(entry.id as NSString).inserted else { continue }
+            apps.append(entry)
         }
         var sorted = apps.enumerated()
             .map { (key: Array(lowercase($0.element.name).utf8), order: $0.offset, entry: $0.element) }
@@ -75,15 +85,37 @@ enum Catalog {
     }
 
     static func parse(_ path: String) -> Entry? {
+        guard let dict = info(at: path) else { return nil }
+        if let flag = dict["LSBackgroundOnly"], isTruthy(flag) {
+            return nil
+        }
+        return entry(path: path, dict: dict, kind: .app)
+    }
+
+    static func pane(_ path: String) -> Entry? {
+        guard let dict = info(at: path),
+              let attributes = dict["EXAppExtensionAttributes"] as? [String: Any],
+              attributes["EXExtensionPointIdentifier"] as? String == paneExtensionPoint,
+              let id = dict["CFBundleIdentifier"] as? String, !skippedPanes.contains(id)
+        else { return nil }
+        var localized = dict
+        localized["CFBundleDisplayName"] = paneNames[id]
+            ?? Bundle(path: path)?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? dict["CFBundleDisplayName"]
+        return entry(path: path, dict: localized, kind: .settings)
+    }
+
+    private static func info(at path: String) -> [String: Any]? {
         let info = (path as NSString).appendingPathComponent("Contents/Info.plist")
         var format = PropertyListSerialization.PropertyListFormat.xml
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: info)),
               let raw = try? PropertyListSerialization.propertyList(from: data, options: [], format: &format),
-              format != .xml || XMLParser(data: data).parse(), let dict = raw as? [String: Any]
+              format != .xml || XMLParser(data: data).parse()
         else { return nil }
-        if let flag = dict["LSBackgroundOnly"], isTruthy(flag) {
-            return nil
-        }
+        return raw as? [String: Any]
+    }
+
+    private static func entry(path: String, dict: [String: Any], kind: Kind) -> Entry? {
         let stem = split((path as NSString).lastPathComponent).stem
         let names = [dict["CFBundleDisplayName"] as? String, dict["CFBundleName"] as? String, stem]
             .compactMap(\.self)
@@ -100,7 +132,7 @@ enum Catalog {
                      name: name,
                      aliases: aliases,
                      path: path,
-                     kind: .app)
+                     kind: kind)
     }
 
     static func cleanName(_ name: String) -> String {
@@ -119,12 +151,12 @@ enum Catalog {
         return roots
     }
 
-    private static func bundles(in root: String, depth: Int) -> [String] {
+    private static func bundles(in root: String, depth: Int, ext: String = "app") -> [String] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: root) else { return [] }
         var out: [String] = []
         for name in names {
             let path = (root as NSString).appendingPathComponent(name)
-            if split(name).ext == "app" {
+            if split(name).ext == ext {
                 out.append(path)
                 continue
             }

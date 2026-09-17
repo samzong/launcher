@@ -25,15 +25,22 @@ import Testing
             }
             try bundle(path, values)
         }
-        let catalog = Catalog.scan(roots: [root.path])
+        let catalog = Catalog.scan(roots: [root.path], panes: nil)
         precondition(catalog.map(\.name) == ["Ghost", "Nested", "Visible", "Quit Launcher"])
         precondition(Catalog.cleanName("Calculator.app") == "Calculator")
         precondition(Catalog.cleanName("Calculator") == "Calculator")
         precondition(Catalog.scan(roots: ["/System/Applications"]).contains { $0.id.contains("calculator") || $0.name.lowercased().contains("calculator") })
+        try bundle("Pane.appex", ["CFBundleIdentifier": "dev.test.pane", "CFBundleName": "Pane",
+                                  "EXAppExtensionAttributes": ["EXExtensionPointIdentifier": "com.apple.Settings.extension.ui"]])
+        try bundle("Widget.appex", ["CFBundleIdentifier": "dev.test.widget", "CFBundleName": "Widget",
+                                    "EXAppExtensionAttributes": ["EXExtensionPointIdentifier": "com.apple.widgetkit-extension"]])
+        let panes = Catalog.scan(roots: [], panes: root.path)
+        precondition(panes.map(\.name) == ["Pane", "Quit Launcher"] && panes.first?.kind == .settings)
+        precondition(Catalog.scan(roots: []).contains { $0.kind == .settings && $0.id == "com.apple.Keyboard-Settings.extension" })
         try bundle("Fresh.app", ["CFBundleName": "Fresh"])
-        precondition(Catalog.scan(roots: [root.path]).contains { $0.name == "Fresh" })
+        precondition(Catalog.scan(roots: [root.path], panes: nil).contains { $0.name == "Fresh" })
         try files.removeItem(at: root.appendingPathComponent("Fresh.app"))
-        precondition(!Catalog.scan(roots: [root.path]).contains { $0.name == "Fresh" })
+        precondition(!Catalog.scan(roots: [root.path], panes: nil).contains { $0.name == "Fresh" })
 
         try bundle("Legacy.app", [:])
         let legacy = root.appendingPathComponent("Legacy.app/Contents/Info.plist")

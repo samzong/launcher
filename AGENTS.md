@@ -2,6 +2,7 @@
 
 - Launcher is a dependency-free Swift 6 / AppKit application for macOS 26+; prefer native APIs.
 - `Launcher.swift` owns panel lifecycle and input; `Views.swift` owns presentation; `Catalog.swift`, `Rank.swift`, and `History.swift` own discovery, matching, and persistence.
+- Catalog entries are apps from the application folders plus System Settings panes from `/System/Library/ExtensionKit/Extensions` (extension point `com.apple.Settings.extension.ui`); panes open through `x-apple.systempreferences:<bundle id>`.
 - Search uses exact, prefix, and word-prefix matching plus learned aliases and usage; preserve the Unicode behavior covered by existing checks.
 - User data lives in `~/Library/Application Support/Launcher/{aliases,usage,hidden}.json`; use temporary directories for persistence checks.
 - Run `make check` for code changes; extend `Tests/LauncherTests/Checks.swift` for uncovered behavior.

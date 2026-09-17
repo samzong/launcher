@@ -229,9 +229,13 @@ final class PanelContent: NSView {
             return image
         }
         let image: NSImage?
-        if entry.kind == .quit {
+        switch entry.kind {
+        case .quit:
             image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-        } else {
+        case .settings:
+            image = NSWorkspace.shared.icon(forFile: "/System/Applications/System Settings.app").copy() as? NSImage
+            image?.size = NSSize(width: 32, height: 32)
+        case .app:
             image = NSWorkspace.shared.icon(forFile: entry.path).copy() as? NSImage
             image?.size = NSSize(width: 32, height: 32)
         }

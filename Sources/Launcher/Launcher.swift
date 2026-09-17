@@ -90,7 +90,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     private func present() {
         let now = DispatchTime.now().uptimeNanoseconds
         let hidden = Store.hidden()
-        catalog = Catalog.scan().filter { $0.kind != .app || !hidden.contains($0.id as NSString) }
+        catalog = Catalog.scan().filter { $0.kind == .quit || !hidden.contains($0.id as NSString) }
         for index in catalog.indices where catalog[index].kind == .app {
             let display = Catalog.cleanName(FileManager.default.displayName(atPath: catalog[index].path))
             if !display.isEmpty, !sameBytes(display, catalog[index].name) {
@@ -140,13 +140,18 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         }
         guard results.indices.contains(selected) else { return }
         let entry = results[selected]
-        if entry.kind == .app {
+        if entry.kind != .quit {
             history.record(content.query, id: entry.id)
         }
         dismiss()
-        if entry.kind == .quit {
+        switch entry.kind {
+        case .quit:
             NSApp.terminate(nil)
-        } else {
+        case .settings:
+            if let url = URL(string: "x-apple.systempreferences:\(entry.id)") {
+                NSWorkspace.shared.open(url)
+            }
+        case .app:
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: entry.path), configuration: config)
