@@ -1,9 +1,9 @@
 import AppKit
 
 private let panelWidth: CGFloat = 640
-private let searchHeight: CGFloat = 48
+private let searchHeight: CGFloat = 44
 private let rowHeight: CGFloat = 44
-private let padding: CGFloat = 8
+private let padding: CGFloat = 4
 private let radius: CGFloat = 20
 private let searchInset: CGFloat = 24
 private let maxRows = 8
@@ -27,12 +27,7 @@ private final class SearchCell: NSTextFieldCell {
     private let editor: DirectEditor = {
         let editor = DirectEditor()
         editor.isFieldEditor = true
-        editor.isRichText = false
-        editor.usesFontPanel = false
-        editor.isAutomaticTextCompletionEnabled = false
         editor.isAutomaticSpellingCorrectionEnabled = false
-        editor.isAutomaticQuoteSubstitutionEnabled = false
-        editor.isAutomaticDashSubstitutionEnabled = false
         return editor
     }()
 
@@ -63,61 +58,28 @@ private final class SearchCell: NSTextFieldCell {
     }
 }
 
-private final class GlassTint: NSView {
-    private var dark: Bool {
-        effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+private func panelFill(for appearance: NSAppearance) -> NSColor {
+    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 0.72)
+        : NSColor(white: 1, alpha: 0.62)
+}
+
+private final class GlassPanel: NSGlassEffectView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        cornerRadius = radius
+        style = .regular
+        tintColor = panelFill(for: effectiveAppearance)
+        autoresizingMask = [.width, .height]
     }
 
-    override func hitTest(_: NSPoint) -> NSView? {
+    required init?(coder _: NSCoder) {
         nil
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        (superview as? NSVisualEffectView)?.material = dark ? .hudWindow : .popover
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let dark = dark
-        let palette: [UInt32] = dark
-            ? [0x0C0D_1288, 0xFFFF_FF12, 0xFFFF_FF00, 0x0000_0028]
-            : [0xE1E3_E8B0, 0xFFFF_FFBF, 0xFFFF_FF40, 0xFFFF_FF80]
-        let colors = palette.map(Self.rgba)
-        let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
-        colors[0].setFill()
-        path.fill()
-        NSGradient(colors: Array(colors.dropFirst()), atLocations: [0, 0.44, 1], colorSpace: .sRGB)?
-            .draw(in: path, angle: -55)
-        Self.rgba(dark ? 0xFFFF_FF1A : 0xFFFF_FFB0).setStroke()
-        path.lineWidth = dark ? 1 : 1.5
-        path.stroke()
-    }
-
-    static func panel(frame: NSRect) -> NSVisualEffectView {
-        let tint = GlassTint(frame: NSRect(origin: .zero, size: frame.size))
-        tint.autoresizingMask = [.width, .height]
-        tint.wantsLayer = true
-        tint.layerContentsRedrawPolicy = .duringViewResize
-        let effect = NSVisualEffectView(frame: frame)
-        effect.blendingMode = .behindWindow
-        effect.material = effect.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? .hudWindow : .popover
-        effect.state = .active
-        effect.autoresizingMask = [.width, .height]
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = radius
-        effect.layer?.masksToBounds = true
-        effect.addSubview(tint)
-        return effect
-    }
-
-    private static func rgba(_ value: UInt32) -> NSColor {
-        NSColor(srgbRed: CGFloat((value >> 24) & 255) / 255,
-                green: CGFloat((value >> 16) & 255) / 255,
-                blue: CGFloat((value >> 8) & 255) / 255,
-                alpha: CGFloat(value & 255) / 255)
+        tintColor = panelFill(for: effectiveAppearance)
     }
 }
 
@@ -155,7 +117,7 @@ final class PanelContent: NSView {
     convenience init() {
         self.init(frame: NSRect(x: 0, y: 0, width: panelWidth, height: Self.height(rows: 0)))
         wantsLayer = true
-        addSubview(GlassTint.panel(frame: bounds))
+        addSubview(GlassPanel(frame: bounds))
         for row in rows {
             addSubview(row.root)
         }
@@ -167,7 +129,9 @@ final class PanelContent: NSView {
         search.focusRingType = .none
         search.font = .systemFont(ofSize: 22)
         search.textColor = .labelColor
-        search.placeholderString = "Search"
+        search.placeholderAttributedString = NSAttributedString(string: "Search", attributes: [
+            .font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.quaternaryLabelColor,
+        ])
         search.autoresizingMask = [.width, .minYMargin]
         addSubview(search)
         applyFrames(height: frame.height)

@@ -1,6 +1,6 @@
 # Launcher
 
-A macOS application launcher built with Swift and AppKit. Requires macOS 14 or later.
+A macOS application launcher built with Swift and AppKit. Requires macOS 26 or later.
 
 `make check` runs the tests. `make install` builds `/Applications/Launcher.app` and opens it; the running app registers itself as a login item. `make dmg` writes a disk image to `.local/dist`; `make uninstall` removes the installed app.
 

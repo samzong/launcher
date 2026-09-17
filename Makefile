@@ -3,6 +3,7 @@ APP := $(DIST)/Launcher.app
 VERSION := $(shell /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
 DMG := $(DIST)/Launcher-$(VERSION).dmg
 TARGET := /Applications/Launcher.app
+TESTING_MACROS := $(shell dirname $(shell xcrun --find swift))/../lib/swift/host/plugins/testing/libTestingMacros.dylib
 
 .PHONY: build check app dmg install uninstall clean
 
@@ -10,7 +11,7 @@ build:
 	swift build -c release
 
 check:
-	swift test
+	swift test -Xswiftc -load-plugin-library -Xswiftc "$(TESTING_MACROS)"
 
 app: build
 	rm -rf "$(APP)"
