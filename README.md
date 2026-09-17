@@ -6,7 +6,7 @@ A macOS application launcher built with Swift and AppKit. Requires macOS 14 or l
 
 The panel scans application folders whenever it opens, including `~/Applications`, `/Applications`, and system applications. Apps inside one folder level are included.
 
-Search uses case-insensitive exact, prefix, and word-prefix matching, then usage frequency and recency. Launching an app learns the typed query. Learned aliases and usage live in `aliases.json` and `usage.json` under `~/Library/Application Support/Launcher`.
+Search uses case-insensitive exact, prefix, and word-prefix matching, then usage frequency and recency. Launching an app learns the typed query. Learned aliases and usage live in `aliases.json` and `usage.json` under `~/Library/Application Support/Launcher`. To hide apps, list their bundle identifiers in `hidden.json` in the same folder, for example `["com.apple.Automator"]`; the list is re-read each time the panel opens.
 
 The implementation follows one path:
 

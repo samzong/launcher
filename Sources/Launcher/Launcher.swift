@@ -91,7 +91,8 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
 
     private func present() {
         let now = DispatchTime.now().uptimeNanoseconds
-        catalog = Catalog.scan()
+        let hidden = Store.hidden()
+        catalog = Catalog.scan().filter { $0.kind != .app || !hidden.contains($0.id as NSString) }
         for index in catalog.indices where catalog[index].kind == .app {
             let display = Catalog.cleanName(FileManager.default.displayName(atPath: catalog[index].path))
             if !display.isEmpty, !sameBytes(display, catalog[index].name) {

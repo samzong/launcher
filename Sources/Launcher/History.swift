@@ -11,6 +11,13 @@ enum Store {
         try? Data(contentsOf: dir.appendingPathComponent(name))
     }
 
+    static func hidden(_ dir: URL = dataDir()) -> Set<NSString> {
+        guard let data = read(dir, "hidden.json"),
+              let ids = (try? JSONSerialization.jsonObject(with: data)) as? [String]
+        else { return [] }
+        return Set(ids.map { $0 as NSString })
+    }
+
     static func write(_ dir: URL, _ name: String, _ data: Data) {
         guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else { return }
         let path = dir.appendingPathComponent(name)
