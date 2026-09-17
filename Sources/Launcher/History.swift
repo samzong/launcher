@@ -77,33 +77,40 @@ final class History {
 
     private static func object(_ dir: URL, _ name: String) -> NSDictionary? {
         guard let data = Store.read(dir, name),
-              let parsed = literalJSON(data)
+              let parsed = jsonPreservingLeadingBOM(data)
         else { return nil }
         return parsed as? NSDictionary
     }
 
-    private static func literalJSON(_ data: Data) -> Any? {
+    private static let quote: UInt8 = 0x22
+    private static let backslash: UInt8 = 0x5C
+    private static let shield: UInt8 = 0x20
+
+    private static func jsonPreservingLeadingBOM(_ data: Data) -> Any? {
         guard !data.starts(with: [0xEF, 0xBB, 0xBF]) else { return nil }
-        var protected: [UInt8] = []
+        var shielded: [UInt8] = []
         var quoted = false
         var escaped = false
         for byte in data {
-            protected.append(byte)
+            shielded.append(byte)
             if escaped {
                 escaped = false
-            } else if quoted, byte == 92 {
+            } else if quoted, byte == backslash {
                 escaped = true
-            } else if byte == 34 {
+            } else if byte == quote {
                 quoted.toggle()
                 if quoted {
-                    protected.append(32)
+                    shielded.append(shield)
                 }
             }
         }
-        guard let object = try? JSONSerialization.jsonObject(with: Data(protected)) else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: Data(shielded)) else { return nil }
         func restore(_ value: Any) -> Any {
             if let string = value as? NSString {
                 return string.substring(from: 1) as NSString
+            }
+            if let array = value as? NSArray {
+                return array.map(restore) as NSArray
             }
             guard let dictionary = value as? NSDictionary else { return value }
             let restored = NSMutableDictionary()

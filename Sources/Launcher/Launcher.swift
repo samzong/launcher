@@ -115,16 +115,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     private func present() {
         let now = DispatchTime.now().uptimeNanoseconds
         let hidden = Store.hidden()
-        catalog = Catalog.scan().filter { $0.kind == .quit || !hidden.contains($0.id as NSString) }
-        for index in catalog.indices where catalog[index].kind == .app {
-            let display = Catalog.cleanName(FileManager.default.displayName(atPath: catalog[index].path))
-            if !display.isEmpty, !sameBytes(display, catalog[index].name) {
-                if !catalog[index].aliases.contains(where: { sameBytes($0, catalog[index].name) }) {
-                    catalog[index].aliases.append(catalog[index].name)
-                }
-                catalog[index].name = display
-            }
-        }
+        catalog = Catalog.applyDisplayNames(Catalog.scan().filter { $0.kind == .quit || !hidden.contains($0.id as NSString) })
         content.clear()
         shownAt = now
         refresh()
@@ -187,11 +178,11 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         guard shownAt != nil else { return true }
         switch event.type {
         case .keyDown where !event.modifierFlags.contains(.command):
-            switch event.keyCode {
-            case 53: dismiss()
-            case 36, 76: launch()
-            case 125: moveSelection(1)
-            case 126: moveSelection(-1)
+            switch Int(event.keyCode) {
+            case kVK_Escape: dismiss()
+            case kVK_Return, kVK_ANSI_KeypadEnter: launch()
+            case kVK_DownArrow: moveSelection(1)
+            case kVK_UpArrow: moveSelection(-1)
             default: return true
             }
         case .leftMouseDown:

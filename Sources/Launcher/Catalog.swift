@@ -135,6 +135,20 @@ enum Catalog {
                      kind: kind)
     }
 
+    static func applyDisplayNames(_ entries: [Entry]) -> [Entry] {
+        entries.map { entry in
+            guard entry.kind == .app else { return entry }
+            let display = cleanName(FileManager.default.displayName(atPath: entry.path))
+            guard !display.isEmpty, !sameBytes(display, entry.name) else { return entry }
+            var renamed = entry
+            if !renamed.aliases.contains(where: { sameBytes($0, entry.name) }) {
+                renamed.aliases.append(entry.name)
+            }
+            renamed.name = display
+            return renamed
+        }
+    }
+
     static func cleanName(_ name: String) -> String {
         for suffix in [".app", ".APP"] where name.hasSuffix(suffix) {
             return String(name.dropLast(suffix.count))
