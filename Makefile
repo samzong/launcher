@@ -15,8 +15,9 @@ check:
 
 app: build
 	rm -rf "$(APP)"
-	mkdir -p "$(APP)/Contents/MacOS"
+	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	cp Info.plist "$(APP)/Contents/Info.plist"
+	cp Resources/AppIcon.icns "$(APP)/Contents/Resources/AppIcon.icns"
 	cp .build/release/Launcher "$(APP)/Contents/MacOS/Launcher"
 	codesign --force --sign - "$(APP)"
 
