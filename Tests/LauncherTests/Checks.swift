@@ -251,4 +251,23 @@ private func app(_ id: String, _ name: String) -> Entry {
             }
         }
     }
+
+    @Test func screenShift() throws {
+        let left = CGRect(x: 0, y: 0, width: 1800, height: 900)
+        let right = CGRect(x: 1800, y: 100, width: 1200, height: 800)
+        let top = CGRect(x: 1800, y: 900, width: 1200, height: 800)
+        #expect(Tile.neighbor(.left, of: left, among: [left]) == nil)
+        #expect(Tile.neighbor(.right, of: left, among: [right, left]) == right)
+        #expect(Tile.neighbor(.left, of: left, among: [right, left]) == right)
+        #expect(Tile.neighbor(.right, of: right, among: [right, left]) == left)
+        #expect(Tile.neighbor(.right, of: right, among: [top, left, right]) == top)
+        #expect(Tile.neighbor(.left, of: left, among: [top, left, right]) == top)
+        #expect(Tile.neighbor(.right, of: CGRect(x: 9, y: 9, width: 1, height: 1), among: [right, left]) == nil)
+        let half = CGRect(x: 0, y: 0, width: 900, height: 900)
+        #expect(Tile.relocated(half, from: left, to: right) == CGRect(x: 1800, y: 100, width: 600, height: 800))
+        let window = CGRect(x: 450, y: 225, width: 900, height: 450)
+        let moved = Tile.relocated(window, from: left, to: right)
+        #expect(moved == CGRect(x: 2100, y: 300, width: 600, height: 400))
+        #expect(Tile.relocated(moved, from: right, to: left) == window)
+    }
 }

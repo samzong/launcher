@@ -33,6 +33,32 @@ enum Tile {
         apply(window, next(edge, current: current, screen: display.visibleFrame))
     }
 
+    static func neighbor(_ edge: Edge, of source: CGRect, among screens: [CGRect]) -> CGRect? {
+        let ordered = screens.sorted { ($0.minX, $0.minY) < ($1.minX, $1.minY) }
+        guard ordered.count > 1, let index = ordered.firstIndex(of: source) else { return nil }
+        return ordered[(index + (edge == .left ? ordered.count - 1 : 1)) % ordered.count]
+    }
+
+    static func relocated(_ rect: CGRect, from source: CGRect, to target: CGRect) -> CGRect {
+        let scaleX = target.width / source.width
+        let scaleY = target.height / source.height
+        return CGRect(x: (target.minX + (rect.minX - source.minX) * scaleX).rounded(),
+                      y: (target.minY + (rect.minY - source.minY) * scaleY).rounded(),
+                      width: (rect.width * scaleX).rounded(), height: (rect.height * scaleY).rounded())
+    }
+
+    static func shift(_ edge: Edge) {
+        guard AXIsProcessTrusted() else { return requestAccess() }
+        let screens = NSScreen.screens
+        guard let window = frontWindow(), let current = frame(window), let source = screen(covering: current),
+              let frame = neighbor(edge, of: source.frame, among: screens.map(\.frame)),
+              let target = screens.first(where: { $0.frame == frame }) else {
+            fputs("Launcher: no frontmost window with a neighboring screen\n", stderr)
+            return
+        }
+        apply(window, relocated(current, from: source.visibleFrame, to: target.visibleFrame))
+    }
+
     static func requestAccess() {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": kCFBooleanTrue as Any] as CFDictionary)
         if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility") {

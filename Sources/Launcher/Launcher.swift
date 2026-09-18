@@ -19,6 +19,8 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         (kVK_ANSI_V, cmdKey | shiftKey, "Command+Shift+V", { $0.clips.toggle() }),
         (kVK_ANSI_Semicolon, shiftKey | optionKey, "Shift+Option+Semicolon", { _ in Tile.snap(.left) }),
         (kVK_ANSI_Quote, shiftKey | optionKey, "Shift+Option+Quote", { _ in Tile.snap(.right) }),
+        (kVK_ANSI_LeftBracket, shiftKey | optionKey, "Shift+Option+LeftBracket", { _ in Tile.shift(.left) }),
+        (kVK_ANSI_RightBracket, shiftKey | optionKey, "Shift+Option+RightBracket", { _ in Tile.shift(.right) }),
     ]
 
     override var canBecomeKey: Bool {
