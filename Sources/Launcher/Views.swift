@@ -1,23 +1,172 @@
 import AppKit
+import Carbon
 
-private let panelWidth: CGFloat = 640
-private let searchHeight: CGFloat = 44
-private let rowHeight: CGFloat = 44
-private let padding: CGFloat = 4
-private let radius: CGFloat = 20
-private let searchInset: CGFloat = 24
-private let maxRows = Rank.limit
+private func panelFill(for appearance: NSAppearance) -> NSColor {
+    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 0.72)
+        : NSColor(white: 1, alpha: 0.62)
+}
+
+final class GlassPanel: NSGlassEffectView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        cornerRadius = 20
+        style = .regular
+        tintColor = panelFill(for: effectiveAppearance)
+        autoresizingMask = [.width, .height]
+    }
+
+    required init?(coder _: NSCoder) {
+        nil
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        tintColor = panelFill(for: effectiveAppearance)
+    }
+}
+
+extension NSPanel {
+    func configureFloatingPanel() {
+        isReleasedWhenClosed = false
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        isOpaque = false
+        hasShadow = true
+        backgroundColor = .clear
+        level = .floating
+        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+    }
+
+    func dismissAndHide() {
+        orderOut(nil)
+        NSRunningApplication.current.hide()
+    }
+}
+
+func screenFor(point: NSPoint) -> NSScreen? {
+    NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
+}
+
+enum KeyAction {
+    case dismiss
+    case submit
+    case up
+    case down
+    case backspace
+    case type(String)
+}
+
+func typableText(_ event: NSEvent) -> String? {
+    guard event.modifierFlags.isDisjoint(with: [.command, .control]),
+          let text = event.characters, !text.isEmpty,
+          text.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F && !(0xF700 ... 0xF8FF).contains($0.value) })
+    else { return nil }
+    return text
+}
+
+func keyAction(_ event: NSEvent) -> KeyAction? {
+    switch Int(event.keyCode) {
+    case kVK_Escape: return .dismiss
+    case kVK_Return, kVK_ANSI_KeypadEnter: return .submit
+    case kVK_DownArrow: return .down
+    case kVK_UpArrow: return .up
+    case kVK_Delete: return .backspace
+    default: return typableText(event).map(KeyAction.type)
+    }
+}
+
+struct PanelStyle {
+    var width: CGFloat
+    var pad: CGFloat
+    var header: CGFloat
+    var rowHeight: CGFloat
+    var rows: Int
+    var highlightInset: CGFloat
+    var cornerRadius: CGFloat
+    var highlightOpacity: CGFloat
+    var iconRect: NSRect
+    var labelRect: NSRect
+    var fontSize: CGFloat
+    var badgeRect: NSRect?
+    var tintsSelection = false
+
+    func height(header: CGFloat, rows: Int) -> CGFloat {
+        pad + header + CGFloat(rows) * rowHeight + pad
+    }
+
+    func rowFrame(_ index: Int, panelHeight: CGFloat, header: CGFloat) -> NSRect {
+        NSRect(x: pad, y: panelHeight - pad - header - rowHeight * CGFloat(index + 1),
+               width: width - pad * 2, height: rowHeight)
+    }
+
+    func index(at point: NSPoint, panelHeight: CGFloat, header: CGFloat, rows: Int) -> Int? {
+        (0 ..< rows).first { rowFrame($0, panelHeight: panelHeight, header: header).contains(point) }
+    }
+}
+
+@MainActor
+struct Row {
+    let root: NSView
+    let highlight: NSBox
+    let icon: NSImageView
+    let label: NSTextField
+    let badge: NSTextField?
+    let style: PanelStyle
+
+    init(style: PanelStyle) {
+        self.style = style
+        root = NSView(frame: NSRect(x: 0, y: 0, width: style.width - style.pad * 2, height: style.rowHeight))
+        root.autoresizingMask = [.width, .minYMargin]
+        highlight = NSBox(frame: NSRect(x: style.highlightInset, y: style.highlightInset,
+                                        width: style.width - style.pad * 2 - style.highlightInset * 2,
+                                        height: style.rowHeight - style.highlightInset * 2))
+        highlight.boxType = .custom
+        highlight.title = ""
+        highlight.titlePosition = .noTitle
+        highlight.borderWidth = 0
+        highlight.cornerRadius = style.cornerRadius
+        highlight.fillColor = .controlAccentColor.withAlphaComponent(style.highlightOpacity)
+        highlight.autoresizingMask = [.width, .height]
+        highlight.isHidden = true
+        icon = NSImageView(frame: style.iconRect)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        label = NSTextField(labelWithString: "")
+        label.frame = style.labelRect
+        label.font = .systemFont(ofSize: style.fontSize)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byTruncatingTail
+        badge = style.badgeRect.map { rect in
+            let badge = NSTextField(labelWithString: "")
+            badge.frame = rect
+            badge.alignment = .right
+            badge.font = .systemFont(ofSize: 12)
+            badge.textColor = .tertiaryLabelColor
+            return badge
+        }
+        [highlight, icon, label].forEach(root.addSubview)
+        if let badge {
+            root.addSubview(badge)
+        }
+    }
+
+    func show(title: String, image: NSImage?, badge text: String, selected: Bool) {
+        highlight.isHidden = !selected
+        icon.image = image
+        label.stringValue = title
+        badge?.stringValue = text
+        if style.tintsSelection {
+            label.textColor = selected ? .white : .labelColor
+            badge?.textColor = selected ? .white.withAlphaComponent(0.7) : .tertiaryLabelColor
+        }
+    }
+}
 
 private final class DirectEditor: NSTextView {
     override func keyDown(with event: NSEvent) {
-        guard event.modifierFlags.isDisjoint(with: [.command, .control]) else { return super.keyDown(with: event) }
-        let typed = event.characters ?? ""
-        if typed.isEmpty {
-            return
-        }
-        if typed.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F && !(0xF700 ... 0xF8FF).contains($0.value) }) {
-            insertText(typed, replacementRange: selectedRange())
-        } else {
+        if let text = typableText(event) {
+            insertText(text, replacementRange: selectedRange())
+        } else if event.characters?.isEmpty == false {
             super.keyDown(with: event)
         }
     }
@@ -58,69 +207,24 @@ private final class SearchCell: NSTextFieldCell {
     }
 }
 
-private func panelFill(for appearance: NSAppearance) -> NSColor {
-    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 0.72)
-        : NSColor(white: 1, alpha: 0.62)
-}
-
-final class GlassPanel: NSGlassEffectView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        cornerRadius = radius
-        style = .regular
-        tintColor = panelFill(for: effectiveAppearance)
-        autoresizingMask = [.width, .height]
-    }
-
-    required init?(coder _: NSCoder) {
-        nil
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        tintColor = panelFill(for: effectiveAppearance)
-    }
-}
-
-@MainActor private struct Row {
-    let root = NSView(frame: NSRect(x: 0, y: 0, width: panelWidth - padding * 2, height: rowHeight))
-    let highlight = NSBox(frame: NSRect(x: 4, y: 4, width: panelWidth - padding * 2 - 8, height: rowHeight - 8))
-    let icon = NSImageView(frame: NSRect(x: 14, y: 6, width: 32, height: 32))
-    let label = NSTextField(labelWithString: "")
-
-    init() {
-        highlight.boxType = .custom
-        highlight.title = ""
-        highlight.titlePosition = .noTitle
-        highlight.borderWidth = 0
-        highlight.cornerRadius = 10
-        highlight.fillColor = .controlAccentColor.withAlphaComponent(0.18)
-        highlight.autoresizingMask = [.width, .height]
-        highlight.isHidden = true
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        label.frame = NSRect(x: 56, y: 10, width: panelWidth - padding * 2 - 72, height: 24)
-        label.font = .systemFont(ofSize: 15)
-        label.textColor = .labelColor
-        label.drawsBackground = false
-        root.autoresizingMask = [.width, .minYMargin]
-        [highlight, icon, label].forEach(root.addSubview)
-    }
-}
-
 final class PanelContent: NSView {
+    static let style = PanelStyle(width: 640, pad: 4, header: 44, rowHeight: 44, rows: Rank.limit,
+                                  highlightInset: 4, cornerRadius: 10, highlightOpacity: 0.18,
+                                  iconRect: NSRect(x: 14, y: 6, width: 32, height: 32),
+                                  labelRect: NSRect(x: 56, y: 10, width: 560, height: 24),
+                                  fontSize: 15, badgeRect: nil)
+    private static let searchInset: CGFloat = 24
+
     private let search = NSTextField()
-    private let rows = (0 ..< maxRows).map { _ in Row() }
+    private let rows = (0 ..< PanelContent.style.rows).map { _ in Row(style: PanelContent.style) }
     private var icons: [Data: NSImage] = [:]
     private var count = 0
 
     convenience init() {
-        self.init(frame: NSRect(x: 0, y: 0, width: panelWidth, height: Self.height(rows: 0)))
+        self.init(frame: NSRect(x: 0, y: 0, width: Self.style.width, height: Self.height(rows: 0)))
         wantsLayer = true
         addSubview(GlassPanel(frame: bounds))
-        for row in rows {
-            addSubview(row.root)
-        }
+        rows.forEach { addSubview($0.root) }
         search.cell = SearchCell(textCell: "")
         search.isBezeled = false
         search.drawsBackground = false
@@ -138,15 +242,8 @@ final class PanelContent: NSView {
     }
 
     func mount(on panel: NSPanel, delegate: NSTextFieldDelegate) {
-        panel.isReleasedWhenClosed = false
-        panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
-        panel.hidesOnDeactivate = false
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.backgroundColor = .clear
-        panel.level = .floating
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        panel.configureFloatingPanel()
         search.delegate = delegate
         panel.contentView = self
     }
@@ -167,15 +264,17 @@ final class PanelContent: NSView {
         }
     }
 
+    static func height(rows: Int) -> CGFloat {
+        style.height(header: style.header, rows: rows)
+    }
+
     func render(entries: [Entry], selected: Int) -> CGFloat {
-        count = min(entries.count, maxRows)
+        count = min(entries.count, rows.count)
         for (index, row) in rows.enumerated() {
             row.root.isHidden = index >= count
             guard index < count else { continue }
-            let entry = entries[index]
-            row.highlight.isHidden = index != selected
-            row.label.stringValue = entry.name
-            row.icon.image = icon(for: entry)
+            row.show(title: entries[index].name, image: icon(for: entries[index]),
+                     badge: "", selected: index == selected)
         }
         return Self.height(rows: count)
     }
@@ -184,7 +283,7 @@ final class PanelContent: NSView {
         let frame = panel.frame
         guard abs(frame.height - height) >= 0.5 else { return }
         panel.setFrame(NSRect(x: frame.minX, y: frame.minY + frame.height - height,
-                              width: panelWidth, height: height), display: true)
+                              width: Self.style.width, height: height), display: true)
         applyFrames(height: height)
         if visible {
             focus(on: panel, end: true)
@@ -194,33 +293,27 @@ final class PanelContent: NSView {
     func click(on panel: NSPanel, event: NSEvent) -> Int? {
         guard !passesClick(on: panel, event: event) else { return nil }
         let point = convert(event.locationInWindow, from: nil)
-        let height = Self.height(rows: count)
-        return (0 ..< count).first { Self.contains(Self.rowFrame(height: height, index: $0), point) }
+        return Self.style.index(at: point, panelHeight: Self.height(rows: count), header: Self.style.header, rows: count)
     }
 
     func passesClick(on panel: NSPanel, event: NSEvent) -> Bool {
-        event.windowNumber != panel.windowNumber || Self.contains(search.frame, convert(event.locationInWindow, from: nil))
+        event.windowNumber != panel.windowNumber || search.frame.contains(convert(event.locationInWindow, from: nil))
     }
 
     func place(on panel: NSPanel) {
-        let point = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { Self.contains($0.frame, point) }) ?? NSScreen.main else { return }
+        guard let screen = screenFor(point: NSEvent.mouseLocation) else { return }
         let visible = screen.visibleFrame
         let height = Self.height(rows: count)
-        panel.setFrame(NSRect(x: visible.minX + floor((visible.width - panelWidth) / 2),
+        panel.setFrame(NSRect(x: visible.minX + floor((visible.width - Self.style.width) / 2),
                               y: visible.minY + visible.height - height - visible.height * 0.20,
-                              width: panelWidth, height: height), display: true)
-    }
-
-    static func height(rows: Int) -> CGFloat {
-        padding + searchHeight + CGFloat(rows) * rowHeight + padding
+                              width: Self.style.width, height: height), display: true)
     }
 
     private func applyFrames(height: CGFloat) {
-        search.frame = NSRect(x: searchInset, y: height - padding - searchHeight,
-                              width: panelWidth - searchInset * 2, height: searchHeight)
+        search.frame = NSRect(x: Self.searchInset, y: height - Self.style.pad - Self.style.header,
+                              width: Self.style.width - Self.searchInset * 2, height: Self.style.header)
         for (index, row) in rows.enumerated() {
-            row.root.frame = Self.rowFrame(height: height, index: index)
+            row.root.frame = Self.style.rowFrame(index, panelHeight: height, header: Self.style.header)
         }
     }
 
@@ -239,14 +332,5 @@ final class PanelContent: NSView {
         }
         icons[key] = image
         return image
-    }
-
-    private static func rowFrame(height: CGFloat, index: Int) -> NSRect {
-        NSRect(x: padding, y: height - padding - searchHeight - rowHeight * CGFloat(index + 1),
-               width: panelWidth - padding * 2, height: rowHeight)
-    }
-
-    private static func contains(_ rect: NSRect, _ point: NSPoint) -> Bool {
-        point.x >= rect.minX && point.y >= rect.minY && point.x <= rect.maxX && point.y <= rect.maxY
     }
 }

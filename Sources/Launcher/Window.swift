@@ -42,12 +42,17 @@ enum Tile {
 
     private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
-        return value
+        return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
     }
 
     private static func child(_ owner: AXUIElement, _ name: String) -> AXUIElement? {
         attribute(owner, name).map { unsafeDowncast($0, to: AXUIElement.self) }
+    }
+
+    private static func axValue<Value>(_ value: CFTypeRef?, _ type: AXValueType, _ out: UnsafeMutablePointer<Value>) -> Bool {
+        guard let value else { return false }
+        return CFGetTypeID(value) == AXValueGetTypeID()
+            && AXValueGetValue(unsafeDowncast(value, to: AXValue.self), type, out)
     }
 
     private static func frontWindow() -> AXUIElement? {
@@ -62,10 +67,8 @@ enum Tile {
     private static func frame(_ window: AXUIElement) -> CGRect? {
         var origin = CGPoint.zero
         var size = CGSize.zero
-        guard let positionValue = attribute(window, kAXPositionAttribute), let sizeValue = attribute(window, kAXSizeAttribute),
-              CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID(),
-              AXValueGetValue(unsafeDowncast(positionValue, to: AXValue.self), .cgPoint, &origin),
-              AXValueGetValue(unsafeDowncast(sizeValue, to: AXValue.self), .cgSize, &size) else { return nil }
+        guard axValue(attribute(window, kAXPositionAttribute), .cgPoint, &origin),
+              axValue(attribute(window, kAXSizeAttribute), .cgSize, &size) else { return nil }
         return flipped(CGRect(origin: origin, size: size))
     }
 

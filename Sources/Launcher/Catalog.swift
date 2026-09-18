@@ -16,47 +16,6 @@ struct Entry {
     static let quit = Entry(id: "internal.quit", name: "Quit Launcher", aliases: ["quit"], path: "", kind: .quit)
 }
 
-func sameBytes(_ lhs: String, _ rhs: String) -> Bool {
-    lhs.utf8.elementsEqual(rhs.utf8)
-}
-
-func lowercase(_ text: String) -> String {
-    guard text.unicodeScalars.contains("Σ") else { return text.lowercased() }
-    let scalars = Array(text.unicodeScalars)
-    var result = ""
-    var precededByCased = false
-    for index in scalars.indices {
-        let scalar = scalars[index]
-        if scalar == "Σ" {
-            let followedByCased = scalars[(index + 1)...].first { !$0.properties.isCaseIgnorable }?.properties.isCased == true
-            result += precededByCased && !followedByCased ? "ς" : "σ"
-        } else {
-            result += String(scalar).lowercased()
-        }
-        if !scalar.properties.isCaseIgnorable {
-            precededByCased = scalar.properties.isCased
-        }
-    }
-    return result
-}
-
-func trim(_ text: String) -> String {
-    var scalars = text.unicodeScalars[...]
-    while scalars.first?.properties.isWhitespace == true {
-        scalars.removeFirst()
-    }
-    while scalars.last?.properties.isWhitespace == true {
-        scalars.removeLast()
-    }
-    return String(scalars)
-}
-
-func plainInteger(_ value: Any?) -> NSNumber? {
-    guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
-          !CFNumberIsFloatType(number) else { return nil }
-    return number
-}
-
 enum Catalog {
     static let paneRoot = "/System/Library/ExtensionKit/Extensions"
     private static let paneExtensionPoint = "com.apple.Settings.extension.ui"
@@ -66,7 +25,7 @@ enum Catalog {
     static func scan(roots: [String]? = nil, panes: String? = paneRoot) -> [Entry] {
         var seen = Set<NSString>()
         var apps: [Entry] = []
-        for root in roots ?? defaultRoots() {
+        for root in roots ?? defaultRoots {
             for path in bundles(in: root, depth: 0) {
                 guard let entry = parse(path), seen.insert(entry.id as NSString).inserted else { continue }
                 apps.append(entry)
@@ -156,14 +115,12 @@ enum Catalog {
         return name
     }
 
-    private static func defaultRoots() -> [String] {
-        var roots: [String] = []
-        if let home = ProcessInfo.processInfo.environment["HOME"] {
-            roots.append((home as NSString).appendingPathComponent("Applications"))
-        }
-        roots.append(contentsOf: ["/Applications", "/System/Applications", "/System/Cryptexes/App/System/Applications"])
-        return roots
-    }
+    private static let defaultRoots = [
+        NSHomeDirectory() + "/Applications",
+        "/Applications",
+        "/System/Applications",
+        "/System/Cryptexes/App/System/Applications",
+    ]
 
     private static func bundles(in root: String, depth: Int, ext: String = "app") -> [String] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: root) else { return [] }
@@ -189,10 +146,9 @@ enum Catalog {
 
     private static func isTruthy(_ value: Any) -> Bool {
         if let number = value as? NSNumber {
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
-                return number.boolValue
-            }
-            return plainInteger(number).flatMap { Int64(exactly: $0) }.map { $0 != 0 } ?? false
+            return CFGetTypeID(number) == CFBooleanGetTypeID()
+                ? number.boolValue
+                : plainInteger(number).flatMap({ Int64(exactly: $0) }).map { $0 != 0 } ?? false
         }
         if let text = value as? String {
             return ["1", "true", "YES", "yes"].contains(text)

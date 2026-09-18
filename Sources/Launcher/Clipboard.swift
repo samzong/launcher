@@ -39,12 +39,7 @@ enum Clips {
     }
 
     static func retained(_ clips: [Clip], now: Int64) -> [Clip] {
-        let kept = clips.filter { clip in
-            if now &- clip.lastUnix < freshSeconds {
-                return true
-            }
-            return clip.uses > 1 && score(clip, now: now) >= floor
-        }
+        let kept = clips.filter { now &- $0.lastUnix < freshSeconds || ($0.uses > 1 && score($0, now: now) >= floor) }
         var total = kept.reduce(0) { $0 + $1.bytes }
         guard total > budget else { return kept }
         var dropped: Set<String> = []
@@ -57,19 +52,13 @@ enum Clips {
 
     static func preview(_ text: String) -> String {
         var out = String.UnicodeScalarView()
-        var spaced = false
-        for scalar in text.unicodeScalars {
-            guard !scalar.properties.isWhitespace, scalar.value >= 0x20, scalar.value != 0x7F else {
-                spaced = !out.isEmpty
-                continue
-            }
-            if spaced {
-                out.append(" ")
-                spaced = false
-            }
-            out.append(scalar)
+        for word in text.unicodeScalars.split(whereSeparator: {
+            $0.properties.isWhitespace || $0.value < 0x20 || $0.value == 0x7F
+        }) {
+            if !out.isEmpty { out.append(" ") }
+            out.append(contentsOf: word)
             if out.count >= previewLimit {
-                break
+                return String(out.prefix(previewLimit))
             }
         }
         return String(out)
@@ -102,8 +91,7 @@ final class Clipboard {
 
     static func load(dir: URL = Store.dataDir().appendingPathComponent("clipboard")) -> Clipboard {
         let clipboard = Clipboard(dir: dir)
-        let data = Store.read(dir, indexFile)
-        guard let stored = data.flatMap({ try? JSONDecoder().decode([Clip].self, from: $0) }) else {
+        guard let stored = Store.read(dir, indexFile).flatMap({ try? JSONDecoder().decode([Clip].self, from: $0) }) else {
             return clipboard
         }
         clipboard.items = stored.filter { FileManager.default.fileExists(atPath: clipboard.blob($0).path) }
@@ -121,11 +109,12 @@ final class Clipboard {
         let board = NSPasteboard.general
         guard board.changeCount != seen else { return }
         seen = board.changeCount
-        guard let (kind, data) = Self.payload(board) else { return }
-        record(kind: kind, data: data, now: Self.now())
+        if let (kind, data) = Self.payload(board) {
+            record(kind: kind, data: data, now: Store.now())
+        }
     }
 
-    func recent(_ query: String, now: Int64 = Clipboard.now()) -> [Clip] {
+    func recent(_ query: String, now: Int64 = Store.now()) -> [Clip] {
         if sweep(now: now) {
             persist()
         }
@@ -136,7 +125,7 @@ final class Clipboard {
         clip.kind == .image ? blob(clip) : nil
     }
 
-    func offer(_ digest: String, now: Int64 = Clipboard.now()) -> Int? {
+    func offer(_ digest: String, now: Int64 = Store.now()) -> Int? {
         guard let index = items.firstIndex(where: { $0.digest == digest }),
               let data = try? Data(contentsOf: blob(items[index])) else { return nil }
         let board = NSPasteboard.general
@@ -188,10 +177,6 @@ final class Clipboard {
         }
         items = kept
         return true
-    }
-
-    static func now() -> Int64 {
-        Int64(max(0, Date().timeIntervalSince1970))
     }
 
     static func payload(_ board: NSPasteboard) -> (ClipKind, Data)? {

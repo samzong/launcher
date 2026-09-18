@@ -40,21 +40,13 @@ enum Rank {
         if bytes.starts(with: target) {
             return prefix
         }
-        for word in lowered.unicodeScalars.split(whereSeparator: { !isAlphanumeric($0) })
-            where Array(String(word).utf8).starts(with: target)
-        {
-            return wordPrefix
-        }
-        return 0
+        return lowered.unicodeScalars
+            .split(whereSeparator: { !isAlphanumeric($0) })
+            .contains { Array(String($0).utf8).starts(with: target) } ? wordPrefix : 0
     }
 
     private static func isAlphanumeric(_ scalar: Unicode.Scalar) -> Bool {
-        if scalar.properties.isAlphabetic {
-            return true
-        }
-        switch scalar.properties.generalCategory {
-        case .decimalNumber, .letterNumber, .otherNumber: return true
-        default: return false
-        }
+        scalar.properties.isAlphabetic
+            || [.decimalNumber, .letterNumber, .otherNumber].contains(scalar.properties.generalCategory)
     }
 }

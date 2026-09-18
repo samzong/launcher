@@ -9,7 +9,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     private var catalog: [Entry] = []
     private var results: [Entry] = []
     private var selected = 0
-    private var shownAt: UInt64?
+    private var shown = false
     private var monitor: Any?
     private var hotkeys: [EventHotKeyRef] = []
     private var handler: EventHandlerRef?
@@ -89,9 +89,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     func applicationWillTerminate(_: Notification) {
-        for hotkey in hotkeys {
-            UnregisterEventHotKey(hotkey)
-        }
+        hotkeys.forEach { UnregisterEventHotKey($0) }
         if let handler {
             RemoveEventHandler(handler)
         }
@@ -101,9 +99,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     func windowDidResignKey(_: Notification) {
-        if let shownAt, DispatchTime.now().uptimeNanoseconds - shownAt >= 300_000_000 {
-            dismiss()
-        }
+        dismiss()
     }
 
     func controlTextDidChange(_: Notification) {
@@ -111,15 +107,14 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     func toggle() {
-        shownAt == nil ? present() : dismiss()
+        shown ? dismiss() : present()
     }
 
     private func present() {
-        let now = DispatchTime.now().uptimeNanoseconds
         let hidden = Store.hidden()
         catalog = Catalog.applyDisplayNames(Catalog.scan().filter { $0.kind == .quit || !hidden.contains($0.id as NSString) })
         content.clear()
-        shownAt = now
+        shown = true
         refresh()
         content.place(on: self)
         NSApp.activate(ignoringOtherApps: true)
@@ -129,21 +124,20 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     private func dismiss() {
-        guard shownAt != nil else { return }
-        shownAt = nil
-        orderOut(nil)
-        NSRunningApplication.current.hide()
+        guard shown else { return }
+        shown = false
+        dismissAndHide()
     }
 
     private func refresh() {
-        results = Rank.query(content.query, apps: catalog, history: history, now: Int64(max(0, Date().timeIntervalSince1970)))
+        results = Rank.query(content.query, apps: catalog, history: history, now: Store.now())
         selected = 0
         render()
     }
 
     private func render() {
         let height = content.render(entries: results, selected: selected)
-        content.layout(on: self, height: height, visible: shownAt != nil)
+        content.layout(on: self, height: height, visible: shown)
     }
 
     private func moveSelection(_ delta: Int) {
@@ -177,22 +171,21 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     }
 
     private func handle(_ event: NSEvent) -> Bool {
-        guard shownAt != nil else { return true }
+        guard shown else { return true }
         switch event.type {
         case .keyDown where !event.modifierFlags.contains(.command):
-            switch Int(event.keyCode) {
-            case kVK_Escape: dismiss()
-            case kVK_Return, kVK_ANSI_KeypadEnter: launch()
-            case kVK_DownArrow: moveSelection(1)
-            case kVK_UpArrow: moveSelection(-1)
+            switch keyAction(event) {
+            case .dismiss: dismiss()
+            case .submit: launch()
+            case .down: moveSelection(1)
+            case .up: moveSelection(-1)
             default: return true
             }
         case .leftMouseDown:
-            if let index = content.click(on: self, event: event) {
-                launch(index)
-            } else {
+            guard let index = content.click(on: self, event: event) else {
                 return content.passesClick(on: self, event: event)
             }
+            launch(index)
         default: return true
         }
         return false

@@ -2,9 +2,11 @@ import Foundation
 
 enum Store {
     static func dataDir() -> URL {
-        let home = ProcessInfo.processInfo.environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
-        guard !home.isEmpty else { return URL(fileURLWithPath: "Launcher") }
-        return URL(fileURLWithPath: home).appendingPathComponent("Library/Application Support/Launcher")
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support/Launcher")
+    }
+
+    static func now() -> Int64 {
+        Int64(max(0, Date().timeIntervalSince1970))
     }
 
     static func read(_ dir: URL, _ name: String) -> Data? {
@@ -13,7 +15,7 @@ enum Store {
 
     static func hidden(_ dir: URL = dataDir()) -> Set<NSString> {
         guard let data = read(dir, "hidden.json"),
-              let ids = (try? JSONSerialization.jsonObject(with: data)) as? [String]
+              let ids = try? JSONDecoder().decode([String].self, from: data)
         else { return [] }
         return Set(ids.map { $0 as NSString })
     }
@@ -47,31 +49,21 @@ final class History {
 
     static func load(dataDir: URL = Store.dataDir()) -> History {
         let history = History(dataDir: dataDir)
-        if let stored = object(dataDir, aliasFile) {
-            var map: [NSString: String] = [:]
-            for (key, value) in stored {
-                guard let key = key as? NSString, let value = value as? String else {
-                    map = [:]
-                    break
-                }
-                map[key] = value
-            }
-            history.aliasMap = map
-        }
-        if let stored = object(dataDir, usageFile), let apps = stored["apps"] as? NSDictionary {
-            var map: [NSString: Usage] = [:]
+        history.aliasMap = (object(dataDir, aliasFile) as? [NSString: String]) ?? [:]
+        var usage: [NSString: Usage] = [:]
+        if let apps = object(dataDir, usageFile)?["apps"] as? [NSString: Any] {
             for (key, value) in apps {
-                guard let key = key as? NSString, let entry = value as? NSDictionary,
+                guard let entry = value as? NSDictionary,
                       let count = plainInteger(entry["count"]).flatMap({ UInt64(exactly: $0) }),
                       let last = plainInteger(entry["last_unix"]).flatMap({ Int64(exactly: $0) })
                 else {
-                    map = [:]
+                    usage = [:]
                     break
                 }
-                map[key] = Usage(count: count, lastUnix: last)
+                usage[key] = Usage(count: count, lastUnix: last)
             }
-            history.usageMap = map
         }
+        history.usageMap = usage
         return history
     }
 
@@ -82,10 +74,6 @@ final class History {
         return parsed as? NSDictionary
     }
 
-    private static let quote: UInt8 = 0x22
-    private static let backslash: UInt8 = 0x5C
-    private static let shield: UInt8 = 0x20
-
     private static func jsonPreservingLeadingBOM(_ data: Data) -> Any? {
         guard !data.starts(with: [0xEF, 0xBB, 0xBF]) else { return nil }
         var shielded: [UInt8] = []
@@ -95,12 +83,12 @@ final class History {
             shielded.append(byte)
             if escaped {
                 escaped = false
-            } else if quoted, byte == backslash {
+            } else if quoted, byte == 0x5C {
                 escaped = true
-            } else if byte == quote {
+            } else if byte == 0x22 {
                 quoted.toggle()
                 if quoted {
-                    shielded.append(shield)
+                    shielded.append(0x20)
                 }
             }
         }
@@ -124,9 +112,9 @@ final class History {
 
     func record(_ query: String, id: String) {
         if remember(query, id: id) {
-            persist(Self.aliasFile, aliasObject())
+            persist(Self.aliasFile, aliasMap as NSDictionary)
         }
-        recordAt(id, now: Int64(max(0, Date().timeIntervalSince1970)))
+        recordAt(id, now: Store.now())
         persist(Self.usageFile, usageObject())
     }
 
@@ -163,19 +151,7 @@ final class History {
         Store.write(dataDir, name, data)
     }
 
-    private func aliasObject() -> NSDictionary {
-        let stored = NSMutableDictionary()
-        for (key, value) in aliasMap {
-            stored[key] = value
-        }
-        return stored
-    }
-
     private func usageObject() -> NSDictionary {
-        let entries = NSMutableDictionary()
-        for (key, value) in usageMap {
-            entries[key] = ["count": value.count, "last_unix": value.lastUnix] as NSDictionary
-        }
-        return ["apps": entries] as NSDictionary
+        ["apps": usageMap.mapValues { ["count": $0.count, "last_unix": $0.lastUnix] }] as NSDictionary
     }
 }
