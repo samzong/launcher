@@ -64,7 +64,7 @@ private func panelFill(for appearance: NSAppearance) -> NSColor {
         : NSColor(white: 1, alpha: 0.62)
 }
 
-private final class GlassPanel: NSGlassEffectView {
+final class GlassPanel: NSGlassEffectView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         cornerRadius = radius

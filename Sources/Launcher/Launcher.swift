@@ -5,6 +5,7 @@ import ServiceManagement
 final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
     private let content = PanelContent()
     private let history = History.load()
+    private let clips = ClipPanel()
     private var catalog: [Entry] = []
     private var results: [Entry] = []
     private var selected = 0
@@ -15,6 +16,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
 
     private static let shortcuts: [(key: Int, modifiers: Int, label: String, run: @MainActor (Launcher) -> Void)] = [
         (kVK_Space, cmdKey, "Command+Space", { $0.toggle() }),
+        (kVK_ANSI_V, cmdKey | shiftKey, "Command+Shift+V", { $0.clips.toggle() }),
         (kVK_ANSI_Semicolon, shiftKey | optionKey, "Shift+Option+Semicolon", { _ in Tile.snap(.left) }),
         (kVK_ANSI_Quote, shiftKey | optionKey, "Shift+Option+Quote", { _ in Tile.snap(.right) }),
     ]

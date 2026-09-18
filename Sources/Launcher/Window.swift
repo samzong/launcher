@@ -33,7 +33,7 @@ enum Tile {
         apply(window, next(edge, current: current, screen: display.visibleFrame))
     }
 
-    private static func requestAccess() {
+    static func requestAccess() {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": kCFBooleanTrue as Any] as CFDictionary)
         if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)

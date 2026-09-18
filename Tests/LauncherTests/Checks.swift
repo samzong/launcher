@@ -169,6 +169,75 @@ private func app(_ id: String, _ name: String) -> Entry {
         #expect(History.load(dataDir: dir).aliasesFor("chrome").isEmpty)
     }
 
+    @Test func clipEvictionWindow() {
+        func clip(_ id: String, uses: UInt64, ageDays: Double) -> Clip {
+            Clip(digest: id, kind: .text, bytes: 512,
+                 lastUnix: 30 * 86400 - Int64(ageDays * 86400), uses: uses, preview: id)
+        }
+        let now: Int64 = 30 * 86400
+        func kept(_ clips: [Clip]) -> [String] {
+            Clips.retained(clips, now: now).map(\.digest)
+        }
+        #expect(kept([clip("fresh", uses: 1, ageDays: 1)]) == ["fresh"])
+        #expect(kept([clip("stale", uses: 1, ageDays: 3)]).isEmpty)
+        #expect(kept([clip("reused", uses: 5, ageDays: 5)]) == ["reused"])
+        #expect(kept([clip("faded", uses: 2, ageDays: 40)]).isEmpty)
+    }
+
+    @Test func clipBudgetBreaker() {
+        let now: Int64 = 0
+        let clips = (0 ..< 10).map {
+            Clip(digest: "c\($0)", kind: .image, bytes: 12 << 20, lastUnix: 0,
+                 uses: UInt64($0 + 1), preview: "image")
+        }
+        let kept = Clips.retained(clips, now: now)
+        #expect(kept.reduce(0) { $0 + $1.bytes } <= Clips.budget)
+        #expect(kept.contains { $0.digest == "c9" })
+        #expect(!kept.contains { $0.digest == "c0" })
+    }
+
+    @Test func clipQueryAndPreview() {
+        func clip(_ id: String, _ preview: String, _ last: Int64) -> Clip {
+            Clip(digest: id, kind: .text, bytes: preview.utf8.count, lastUnix: last, uses: 1, preview: preview)
+        }
+        let clips = [clip("a", "let value = 1", 10), clip("b", "SELECT * FROM users", 30), clip("c", "Let it be", 20)]
+        #expect(Clips.query("", clips: clips).map(\.digest) == ["b", "c", "a"])
+        #expect(Clips.query("let", clips: clips).map(\.digest) == ["c", "a"])
+        #expect(Clips.query("   ", clips: clips).map(\.digest) == ["b", "c", "a"])
+        #expect(Clips.query("zzz", clips: clips).isEmpty)
+        #expect(Clips.preview("  let x = 1\n\n\tlet y = 2  ") == "let x = 1 let y = 2")
+        #expect(Clips.preview(String(repeating: "x", count: Clips.previewLimit + 10)).count == Clips.previewLimit)
+    }
+
+    @MainActor @Test func clipStoreDropsBlobsWithEntries() throws {
+        let dir = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let blobs = dir.appendingPathComponent("blobs")
+        let clipboard = Clipboard(dir: dir)
+        let later: Int64 = 5 * 86400
+        clipboard.record(kind: .text, data: Data("stale".utf8), now: 0)
+        clipboard.record(kind: .text, data: Data("reused".utf8), now: 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: blobs.path).count == 2)
+        let stale = try #require(clipboard.recent("stale", now: 0).first)
+        let reused = try #require(clipboard.recent("reused", now: 0).first)
+
+        clipboard.record(kind: .text, data: Data("reused".utf8), now: later - 60)
+        #expect(clipboard.recent("reused", now: later).map(\.uses) == [1])
+        #expect(!FileManager.default.fileExists(atPath: blobs.appendingPathComponent(stale.file).path))
+        #expect(FileManager.default.fileExists(atPath: blobs.appendingPathComponent(reused.file).path))
+        #expect(clipboard.recent("", now: later).map(\.digest) == [reused.digest])
+
+        let reloaded = Clipboard.load(dir: dir)
+        #expect(reloaded.recent("reused", now: later).map(\.digest) == [reused.digest])
+        Store.write(dir, "index.json", Data("{".utf8))
+        #expect(Clipboard.load(dir: dir).recent("", now: later).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: blobs.appendingPathComponent(reused.file).path))
+        Store.write(dir, "index.json", Data("[]".utf8))
+        try Data("orphan".utf8).write(to: blobs.appendingPathComponent("orphan.txt"))
+        _ = Clipboard.load(dir: dir)
+        #expect(!FileManager.default.fileExists(atPath: blobs.appendingPathComponent("orphan.txt").path))
+    }
+
     @Test func tilingStageCycle() throws {
         let screen = CGRect(x: 0, y: 0, width: 1800, height: 900)
         for edge in [Edge.left, .right] {
