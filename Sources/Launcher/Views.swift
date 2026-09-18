@@ -14,6 +14,10 @@ final class GlassPanel: NSGlassEffectView {
         style = .regular
         tintColor = panelFill(for: effectiveAppearance)
         autoresizingMask = [.width, .height]
+        wantsLayer = true
+        layer?.masksToBounds = true
+        layer?.cornerRadius = cornerRadius
+        layer?.cornerCurve = .continuous
     }
 
     required init?(coder _: NSCoder) {
