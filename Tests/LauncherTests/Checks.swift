@@ -27,7 +27,7 @@ private func app(_ id: String, _ name: String) -> Entry {
         for (path, name, flag) in [
             ("Visible.app", "Visible", ""), ("Ghost.app", "Ghost", "LSUIElement"),
             ("Daemon.app", "Daemon", "LSBackgroundOnly"), ("Utilities/Nested.app", "Nested", ""),
-            ("Visible.app/Contents/Helpers/Inner.app", "Inner", ""),
+            ("Visible.app/Contents/Helpers/Inner.app", "Inner", ""), ("Shout.APP", "Shout", ""),
         ] {
             var values: [String: Any] = ["CFBundleIdentifier": "dev.test.\(name)", "CFBundleName": name, "CFBundlePackageType": "APPL"]
             if !flag.isEmpty {
@@ -35,7 +35,7 @@ private func app(_ id: String, _ name: String) -> Entry {
             }
             try writeBundle(root, path, values)
         }
-        #expect(Catalog.scan(roots: [root.path], panes: nil).map(\.name) == ["Ghost", "Nested", "Visible", "Quit Launcher"])
+        #expect(Catalog.scan(roots: [root.path], panes: nil).map(\.name) == ["Ghost", "Nested", "Shout", "Visible", "Quit Launcher"])
         #expect(Catalog.cleanName("Calculator.app") == "Calculator")
         #expect(Catalog.cleanName("Calculator") == "Calculator")
         #expect(Catalog.scan(roots: ["/System/Applications"]).contains { $0.id.contains("calculator") || $0.name.lowercased().contains("calculator") })

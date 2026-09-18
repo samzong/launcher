@@ -6,7 +6,7 @@ private let rowHeight: CGFloat = 44
 private let padding: CGFloat = 4
 private let radius: CGFloat = 20
 private let searchInset: CGFloat = 24
-private let maxRows = 8
+private let maxRows = Rank.limit
 
 private final class DirectEditor: NSTextView {
     override func keyDown(with event: NSEvent) {
@@ -157,6 +157,7 @@ final class PanelContent: NSView {
 
     func clear() {
         search.stringValue = ""
+        icons.removeAll()
     }
 
     func focus(on panel: NSPanel, end: Bool) {

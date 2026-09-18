@@ -170,7 +170,7 @@ enum Catalog {
         var out: [String] = []
         for name in names {
             let path = (root as NSString).appendingPathComponent(name)
-            if split(name).ext == ext {
+            if split(name).ext.map({ lowercase($0) == ext }) == true {
                 out.append(path)
                 continue
             }

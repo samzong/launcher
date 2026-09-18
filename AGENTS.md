@@ -1,10 +1,10 @@
 # Project guidance
 
 - Launcher is a dependency-free Swift 6 / AppKit application for macOS 26+; prefer native APIs.
-- `Launcher.swift` owns panel lifecycle and input; `Views.swift` owns presentation; `Catalog.swift`, `Rank.swift`, and `History.swift` own discovery, matching, and persistence; `Window.swift` owns frontmost-window tiling.
+- `Launcher.swift` owns panel lifecycle and input; `Views.swift` owns presentation; `Catalog.swift`, `Rank.swift`, and `History.swift` own discovery, matching, and persistence; `Window.swift` owns frontmost-window tiling; `Clipboard.swift` and `ClipPanel.swift` own clipboard-history capture and its panel.
 - Catalog entries are apps from the application folders plus System Settings panes from `/System/Library/ExtensionKit/Extensions` (extension point `com.apple.Settings.extension.ui`); panes open through `x-apple.systempreferences:<bundle id>`.
 - Search uses exact, prefix, and word-prefix matching plus learned aliases and usage; preserve the Unicode behavior covered by existing checks.
-- User data lives in `~/Library/Application Support/Launcher/{aliases,usage,hidden}.json`; use temporary directories for persistence checks.
+- User data lives in `~/Library/Application Support/Launcher/{aliases,usage,hidden}.json` plus `clipboard/` (`index.json` and `blobs/`); use temporary directories for persistence checks.
 - Run `make check` for code changes; extend `Tests/LauncherTests/Checks.swift` for uncovered behavior.
 - Verify UI changes in the native app, including affected hotkey, focus, dismissal, input-method bypass in the search field, and launch behavior; tests alone do not prove these.
 - `make app` packages locally; `make install` replaces `/Applications/Launcher.app`, opens it, and may register a login item, so use it only when installation is requested.

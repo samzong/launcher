@@ -1,7 +1,7 @@
 import Foundation
 
 enum Rank {
-    private static let limit = 8
+    static let limit = 8
     private static let frecencyWeight = 36.0
     private static let exact = 520.0
     private static let prefix = 240.0
