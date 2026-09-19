@@ -16,6 +16,11 @@ private func writeBundle(_ root: URL, _ path: String, _ values: [String: Any]) t
     try PropertyListSerialization.data(fromPropertyList: values, format: .xml, options: 0).write(to: info)
 }
 
+private func sent(_ request: URLRequest) throws -> [String: Any] {
+    let body = try #require(request.httpBody)
+    return try #require((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])
+}
+
 private func app(_ id: String, _ name: String) -> Entry {
     Entry(id: id, name: name, aliases: [], path: "/Applications/\(name).app", kind: .app)
 }
@@ -236,6 +241,82 @@ private func app(_ id: String, _ name: String) -> Entry {
         try Data("orphan".utf8).write(to: blobs.appendingPathComponent("orphan.txt"))
         _ = Clipboard.load(dir: dir)
         #expect(!FileManager.default.fileExists(atPath: blobs.appendingPathComponent("orphan.txt").path))
+    }
+
+    @Test func translateConfigFallsBackWhenUnusable() throws {
+        let root = try makeRoot()
+        let missing = TranslateConfig.load(dir: root)
+        #expect(missing.key.isEmpty)
+        #expect(missing.model == TranslateConfig.defaultModel)
+        #expect(missing.styles == TranslateConfig.defaultStyles())
+        #expect(missing.endpoint.absoluteString == "https://api.deepseek.com/chat/completions")
+        #expect(missing.extra["thinking"] != nil)
+        #expect(TranslateConfig.parse(Data("not json".utf8)) == nil)
+        #expect(TranslateConfig.parse(Data(#"{"base": "https://my host/v1", "key": "sk-x"}"#.utf8)) == nil)
+        #expect(Chat.request(missing, style: missing.styles[0], source: "hi") == nil)
+    }
+
+    @Test func translateConfigReadsAnyOpenAIEndpoint() throws {
+        let root = try makeRoot()
+        let body = """
+        {"base": "https://api.openai.com/v1/", "key": "sk-x", "model": "gpt-4o-mini",
+         "styles": [{"name": "Plain", "prompt": "Keep it plain."}, {"name": "", "prompt": "dropped"},
+                    {"name": "NoPrompt"}, {"name": "Sharp", "prompt": "Be sharp.", "model": "gpt-4o", "extra": {"reasoning_effort": "max"}}]}
+        """
+        Store.write(root, TranslateConfig.file, Data(body.utf8))
+        let config = TranslateConfig.load(dir: root)
+        #expect(config.endpoint.absoluteString == "https://api.openai.com/v1/chat/completions")
+        #expect(config.extra.isEmpty)
+        #expect(config.styles == [Style(name: "Plain", prompt: "Keep it plain.", model: nil),
+                                  Style(name: "Sharp", prompt: "Be sharp.", model: "gpt-4o",
+                                        extra: ["reasoning_effort": "max"])])
+        let plain = try #require(Chat.request(config, style: config.styles[0], source: "hello"))
+        #expect(plain.value(forHTTPHeaderField: "Authorization") == "Bearer sk-x")
+        #expect(try sent(plain)["model"] as? String == "gpt-4o-mini")
+        #expect(try sent(plain)["thinking"] == nil)
+        let sharp = try #require(Chat.request(config, style: config.styles[1], source: "hello"))
+        #expect(try sent(sharp)["model"] as? String == "gpt-4o")
+        #expect(try sent(sharp)["reasoning_effort"] as? String == "max")
+    }
+
+    @MainActor @Test func translatorDropsRepliesForEditedSource() async {
+        let config = TranslateConfig(endpoint: TranslateConfig.endpoint("https://api.test")!, key: "sk-x",
+                                     model: "m", extra: [:], styles: TranslateConfig.defaultStyles())
+        let translator = Translator(config: config) { _ in .done("你好") }
+        translator.retarget("hello")
+        let stale = translator.start(0) {}
+        translator.retarget("goodbye")
+        await stale?.value
+        #expect(translator.value(0) == nil)
+        let fresh = translator.start(0) {}
+        #expect(translator.value(0) == .pending)
+        await fresh?.value
+        #expect(translator.value(0) == .done("你好"))
+        translator.retire(0)
+        #expect(translator.value(0) == .done("你好"))
+
+        let broken = Translator(config: config) { _ in .failed("HTTP 401") }
+        broken.retarget("hello")
+        let attempt = broken.start(0) {}
+        await attempt?.value
+        broken.retire(0)
+        #expect(broken.value(0) == nil)
+    }
+
+    @Test func translateLayoutKeepsEveryHeaderOnScreen() {
+        let source = TransMetrics.sourceHeight(2000)
+        let open = [true, true, false]
+        let roomy = TransMetrics.solve(source: source, blocks: [80, 10, nil], limit: 2000)
+        #expect(roomy.outputs == [80, TransMetrics.line, 0])
+        #expect(roomy.panel == TransMetrics.panelHeight(source: source, outputs: roomy.outputs, open: open))
+        #expect(roomy.panel < 2000)
+
+        let limit: CGFloat = 600
+        let squeezed = TransMetrics.solve(source: source, blocks: [4000, 4000, nil], limit: limit)
+        #expect(squeezed.panel <= limit)
+        #expect(squeezed.outputs[2] == 0)
+        #expect(squeezed.outputs.prefix(2).allSatisfy { $0 >= TransMetrics.line * TransMetrics.minLines })
+        #expect(squeezed.panel == TransMetrics.panelHeight(source: source, outputs: squeezed.outputs, open: open))
     }
 
     @Test func tilingStageCycle() throws {

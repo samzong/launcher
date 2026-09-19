@@ -74,7 +74,7 @@ private final class ClipContent: NSView {
 }
 
 final class ClipPanel: NSPanel, NSWindowDelegate {
-    private let store = Clipboard.load()
+    private let store: Clipboard
     private let list = ClipContent()
     private var clips: [Clip] = []
     private var query = ""
@@ -87,7 +87,8 @@ final class ClipPanel: NSPanel, NSWindowDelegate {
         true
     }
 
-    init() {
+    init(clipboard: Clipboard) {
+        store = clipboard
         super.init(contentRect: NSRect(x: 0, y: 0, width: ClipContent.style.width,
                                        height: ClipContent.height(rows: 0, header: false)),
                    styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
@@ -95,7 +96,6 @@ final class ClipPanel: NSPanel, NSWindowDelegate {
         configureFloatingPanel()
         acceptsMouseMovedEvents = true
         contentView = list
-        store.start()
     }
 
     func toggle() {
@@ -146,16 +146,9 @@ final class ClipPanel: NSPanel, NSWindowDelegate {
 
     private func paste(_ index: Int) {
         guard clips.indices.contains(index) else { return }
-        guard AXIsProcessTrusted() else {
-            dismiss()
-            return Tile.requestAccess()
-        }
         dismiss()
-        guard let change = store.offer(clips[index].digest) else { return }
-        caller?.activate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(150)) {
-            Clipboard.synthesizePaste(after: change)
-        }
+        guard Tile.granted() else { return }
+        store.paste(store.offer(clips[index].digest), into: caller)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

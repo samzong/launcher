@@ -25,7 +25,7 @@ enum Tile {
     }
 
     static func snap(_ edge: Edge) {
-        guard AXIsProcessTrusted() else { return requestAccess() }
+        guard granted() else { return }
         guard let window = frontWindow(), let current = frame(window), let display = screen(covering: current) else {
             fputs("Launcher: no tileable frontmost window\n", stderr)
             return
@@ -48,7 +48,7 @@ enum Tile {
     }
 
     static func shift(_ edge: Edge) {
-        guard AXIsProcessTrusted() else { return requestAccess() }
+        guard granted() else { return }
         let screens = NSScreen.screens
         guard let window = frontWindow(), let current = frame(window), let source = screen(covering: current),
               let frame = neighbor(edge, of: source.frame, among: screens.map(\.frame)),
@@ -57,6 +57,14 @@ enum Tile {
             return
         }
         apply(window, relocated(current, from: source.visibleFrame, to: target.visibleFrame))
+    }
+
+    static func granted() -> Bool {
+        guard AXIsProcessTrusted() else {
+            requestAccess()
+            return false
+        }
+        return true
     }
 
     static func requestAccess() {

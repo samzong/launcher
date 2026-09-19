@@ -80,10 +80,14 @@ final class Clipboard {
     private static let indexFile = "index.json"
     private static let blobDir = "blobs"
     private static let interval = 0.5
+    private static let copyKey: CGKeyCode = 0x08
+    private static let pasteKey: CGKeyCode = 0x09
+    private static let copyTries = 15
 
     private let dir: URL
     private var items: [Clip] = []
     private var seen = NSPasteboard.general.changeCount
+    private var suspended = false
 
     init(dir: URL) {
         self.dir = dir
@@ -107,7 +111,7 @@ final class Clipboard {
 
     private func poll() {
         let board = NSPasteboard.general
-        guard board.changeCount != seen else { return }
+        guard !suspended, board.changeCount != seen else { return }
         seen = board.changeCount
         if let (kind, data) = Self.payload(board) {
             record(kind: kind, data: data, now: Store.now())
@@ -143,11 +147,78 @@ final class Clipboard {
         return seen
     }
 
-    static func synthesizePaste(after change: Int) {
-        guard NSPasteboard.general.changeCount == change,
-              let source = CGEventSource(stateID: .combinedSessionState) else { return }
+    func suspend() {
+        suspended = true
+    }
+
+    func resume() {
+        suspended = false
+        seen = NSPasteboard.general.changeCount
+    }
+
+    @discardableResult
+    func place(_ text: String) -> Int {
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(text, forType: .string)
+        return board.changeCount
+    }
+
+    func paste(_ change: Int?, into caller: NSRunningApplication?) {
+        guard let change else { return }
+        caller?.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(150)) { [self] in
+            if NSPasteboard.general.changeCount == change {
+                Self.synthesize(Self.pasteKey)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) { [self] in
+                resume()
+            }
+        }
+    }
+
+    func capture(_ done: @escaping (String) -> Void) {
+        guard !suspended else { return }
+        guard Tile.granted() else { return done("") }
+        suspend()
+        let board = NSPasteboard.general
+        let saved = (board.pasteboardItems ?? []).map(Self.duplicate)
+        let before = board.changeCount
+        Self.synthesize(Self.copyKey)
+        awaitCopy(before: before, saved: saved, left: Self.copyTries, done: done)
+    }
+
+    private func awaitCopy(before: Int, saved: [NSPasteboardItem], left: Int,
+                           done: @escaping (String) -> Void) {
+        let board = NSPasteboard.general
+        guard board.changeCount == before, left > 0 else {
+            let text = board.changeCount == before ? "" : board.string(forType: .string) ?? ""
+            board.clearContents()
+            if !saved.isEmpty {
+                board.writeObjects(saved)
+            }
+            resume()
+            return done(trim(text))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20)) { [self] in
+            awaitCopy(before: before, saved: saved, left: left - 1, done: done)
+        }
+    }
+
+    private static func duplicate(_ item: NSPasteboardItem) -> NSPasteboardItem {
+        let copy = NSPasteboardItem()
+        for type in item.types {
+            if let data = item.data(forType: type) {
+                copy.setData(data, forType: type)
+            }
+        }
+        return copy
+    }
+
+    private static func synthesize(_ key: CGKeyCode) {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
         for down in [true, false] {
-            let event = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: down)
+            let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down)
             event?.flags = .maskCommand
             event?.post(tap: .cghidEventTap)
         }

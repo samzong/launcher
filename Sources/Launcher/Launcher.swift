@@ -5,7 +5,9 @@ import ServiceManagement
 final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
     private let content = PanelContent()
     private let history = History.load()
-    private let clips = ClipPanel()
+    private let clipboard = Clipboard.load()
+    private lazy var clips = ClipPanel(clipboard: clipboard)
+    private lazy var translate = TransPanel(clipboard: clipboard)
     private var catalog: [Entry] = []
     private var results: [Entry] = []
     private var selected = 0
@@ -21,6 +23,8 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
         (kVK_ANSI_Quote, shiftKey | optionKey, "Shift+Option+Quote", { _ in Tile.snap(.right) }),
         (kVK_ANSI_LeftBracket, shiftKey | optionKey, "Shift+Option+LeftBracket", { _ in Tile.shift(.left) }),
         (kVK_ANSI_RightBracket, shiftKey | optionKey, "Shift+Option+RightBracket", { _ in Tile.shift(.right) }),
+        (kVK_ANSI_D, optionKey, "Option+D", { $0.translate.fromSelection() }),
+        (kVK_ANSI_A, optionKey, "Option+A", { $0.translate.fromInput() }),
     ]
 
     override var canBecomeKey: Bool {
@@ -41,6 +45,7 @@ final class Launcher: NSPanel, NSApplicationDelegate, NSWindowDelegate, NSTextFi
     func applicationDidFinishLaunching(_: Notification) {
         installMenu()
         registerShortcuts()
+        clipboard.start()
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             self?.handle(event) == false ? nil : event
         }
