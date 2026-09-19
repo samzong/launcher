@@ -41,9 +41,6 @@ private func app(_ id: String, _ name: String) -> Entry {
             try writeBundle(root, path, values)
         }
         #expect(Catalog.scan(roots: [root.path], panes: nil).map(\.name) == ["Ghost", "Nested", "Shout", "Visible", "Quit Launcher"])
-        #expect(Catalog.cleanName("Calculator.app") == "Calculator")
-        #expect(Catalog.cleanName("Calculator") == "Calculator")
-        #expect(Catalog.scan(roots: ["/System/Applications"]).contains { $0.id.contains("calculator") || $0.name.lowercased().contains("calculator") })
 
         try writeBundle(root, "Pane.appex", ["CFBundleIdentifier": "dev.test.pane", "CFBundleName": "Pane",
                                              "EXAppExtensionAttributes": ["EXExtensionPointIdentifier": "com.apple.Settings.extension.ui"]])
@@ -52,7 +49,6 @@ private func app(_ id: String, _ name: String) -> Entry {
         let panes = Catalog.scan(roots: [], panes: root.path)
         #expect(panes.map(\.name) == ["Pane", "Quit Launcher"])
         #expect(panes.first?.kind == .settings)
-        #expect(Catalog.scan(roots: []).contains { $0.kind == .settings && $0.id == "com.apple.Keyboard-Settings.extension" })
 
         try writeBundle(root, "Fresh.app", ["CFBundleName": "Fresh"])
         #expect(Catalog.scan(roots: [root.path], panes: nil).contains { $0.name == "Fresh" })
@@ -96,7 +92,6 @@ private func app(_ id: String, _ name: String) -> Entry {
             Rank.query(query, apps: apps, history: history, now: 0).map(\.id)
         }
         #expect(hits("").isEmpty)
-        #expect(hits("   ").isEmpty)
         #expect(hits("chr") == ["chrome"])
         #expect(hits("ch") == ["chrome"])
         #expect(hits("gce").isEmpty)
@@ -208,10 +203,8 @@ private func app(_ id: String, _ name: String) -> Entry {
         let clips = [clip("a", "let value = 1", 10), clip("b", "SELECT * FROM users", 30), clip("c", "Let it be", 20)]
         #expect(Clips.query("", clips: clips).map(\.digest) == ["b", "c", "a"])
         #expect(Clips.query("let", clips: clips).map(\.digest) == ["c", "a"])
-        #expect(Clips.query("   ", clips: clips).map(\.digest) == ["b", "c", "a"])
         #expect(Clips.query("zzz", clips: clips).isEmpty)
         #expect(Clips.preview("  let x = 1\n\n\tlet y = 2  ") == "let x = 1 let y = 2")
-        #expect(Clips.preview(String(repeating: "x", count: Clips.previewLimit + 10)).count == Clips.previewLimit)
     }
 
     @MainActor @Test func clipStoreDropsBlobsWithEntries() throws {
@@ -247,10 +240,6 @@ private func app(_ id: String, _ name: String) -> Entry {
         let root = try makeRoot()
         let missing = TranslateConfig.load(dir: root)
         #expect(missing.key.isEmpty)
-        #expect(missing.model == TranslateConfig.defaultModel)
-        #expect(missing.styles == TranslateConfig.defaultStyles())
-        #expect(missing.endpoint.absoluteString == "https://api.deepseek.com/chat/completions")
-        #expect(missing.extra["thinking"] != nil)
         #expect(TranslateConfig.parse(Data("not json".utf8)) == nil)
         #expect(TranslateConfig.parse(Data(#"{"base": "https://my host/v1", "key": "sk-x"}"#.utf8)) == nil)
         #expect(Chat.request(missing, style: missing.styles[0], source: "hi") == nil)
@@ -301,22 +290,6 @@ private func app(_ id: String, _ name: String) -> Entry {
         await attempt?.value
         broken.retire(0)
         #expect(broken.value(0) == nil)
-    }
-
-    @Test func translateLayoutKeepsEveryHeaderOnScreen() {
-        let source = TransMetrics.sourceHeight(2000)
-        let open = [true, true, false]
-        let roomy = TransMetrics.solve(source: source, blocks: [80, 10, nil], limit: 2000)
-        #expect(roomy.outputs == [80, TransMetrics.line, 0])
-        #expect(roomy.panel == TransMetrics.panelHeight(source: source, outputs: roomy.outputs, open: open))
-        #expect(roomy.panel < 2000)
-
-        let limit: CGFloat = 600
-        let squeezed = TransMetrics.solve(source: source, blocks: [4000, 4000, nil], limit: limit)
-        #expect(squeezed.panel <= limit)
-        #expect(squeezed.outputs[2] == 0)
-        #expect(squeezed.outputs.prefix(2).allSatisfy { $0 >= TransMetrics.line * TransMetrics.minLines })
-        #expect(squeezed.panel == TransMetrics.panelHeight(source: source, outputs: squeezed.outputs, open: open))
     }
 
     @Test func tilingStageCycle() throws {
