@@ -20,12 +20,16 @@ enum Store {
         return Set(ids.map { $0 as NSString })
     }
 
-    static func write(_ dir: URL, _ name: String, _ data: Data) {
-        guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else { return }
-        let path = dir.appendingPathComponent(name)
-        let tmp = path.deletingPathExtension().appendingPathExtension("json.tmp")
-        guard (try? data.write(to: tmp)) != nil else { return }
-        _ = rename(tmp.path, path.path)
+    @discardableResult
+    static func write(_ dir: URL, _ name: String, _ data: Data) -> Bool {
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: dir.appendingPathComponent(name), options: .atomic)
+            return true
+        } catch {
+            fputs("Launcher: could not save \(name): \(error.localizedDescription)\n", stderr)
+            return false
+        }
     }
 }
 

@@ -95,9 +95,7 @@ final class Clipboard {
 
     static func load(dir: URL = Store.dataDir().appendingPathComponent("clipboard")) -> Clipboard {
         let clipboard = Clipboard(dir: dir)
-        guard let stored = Store.read(dir, indexFile).flatMap({ try? JSONDecoder().decode([Clip].self, from: $0) }) else {
-            return clipboard
-        }
+        let stored = Store.read(dir, indexFile).flatMap { try? JSONDecoder().decode([Clip].self, from: $0) } ?? []
         clipboard.items = stored.filter { FileManager.default.fileExists(atPath: clipboard.blob($0).path) }
         clipboard.dropOrphans()
         return clipboard
@@ -165,10 +163,11 @@ final class Clipboard {
     }
 
     func paste(_ change: Int?, into caller: NSRunningApplication?) {
-        guard let change else { return }
-        caller?.activate()
+        guard let change, let caller, caller.activate() else { return resume() }
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(150)) { [self] in
-            if NSPasteboard.general.changeCount == change {
+            if !caller.isTerminated,
+               NSWorkspace.shared.frontmostApplication?.processIdentifier == caller.processIdentifier,
+               NSPasteboard.general.changeCount == change {
                 Self.synthesize(Self.pasteKey)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) { [self] in
@@ -226,6 +225,7 @@ final class Clipboard {
 
     func record(kind: ClipKind, data: Data, now: Int64) {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var added: Clip?
         if let index = items.firstIndex(where: { $0.digest == digest }) {
             items[index].lastUnix = now
         } else {
@@ -233,9 +233,13 @@ final class Clipboard {
                             preview: kind == .text ? Clips.preview(String(decoding: data, as: UTF8.self)) : "")
             guard write(data, to: clip) else { return }
             items.append(clip)
+            added = clip
         }
         sweep(now: now)
-        persist()
+        if !persist(), let added {
+            items.removeAll { $0.digest == added.digest }
+            try? FileManager.default.removeItem(at: blob(added))
+        }
     }
 
     @discardableResult
@@ -290,10 +294,11 @@ final class Clipboard {
         }
     }
 
-    private func persist() {
+    @discardableResult
+    private func persist() -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(items) else { return }
-        Store.write(dir, Self.indexFile, data)
+        guard let data = try? encoder.encode(items) else { return false }
+        return Store.write(dir, Self.indexFile, data)
     }
 }

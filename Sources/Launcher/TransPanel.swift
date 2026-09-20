@@ -169,6 +169,8 @@ private final class TransBlock {
         head = Tap(title: name) { act(.fold) }
         copy = Tap(symbol: "doc.on.doc") { act(.copy) }
         insert = Tap(symbol: "arrow.right.square") { act(.insert) }
+        copy.setAccessibilityLabel("Copy translation")
+        insert.setAccessibilityLabel("Insert translation")
         chevron.imageScaling = .scaleNone
         chevron.contentTintColor = .tertiaryLabelColor
         [head, chevron, well.scroll, copy, insert].forEach { root.contentView?.addSubview($0) }
@@ -238,6 +240,7 @@ private final class TransContent: NSView {
 
     func show(pinned: Bool) {
         pin.image = NSImage(systemSymbolName: pinned ? "pin.fill" : "pin", accessibilityDescription: nil)
+        pin.setAccessibilityLabel(pinned ? "Unpin translation panel" : "Pin translation panel")
         pin.contentTintColor = pinned ? .controlAccentColor : .tertiaryLabelColor
     }
 

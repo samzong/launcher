@@ -229,11 +229,21 @@ private func app(_ id: String, _ name: String) -> Entry {
         #expect(reloaded.recent("reused", now: later).map(\.digest) == [reused.digest])
         Store.write(dir, "index.json", Data("{".utf8))
         #expect(Clipboard.load(dir: dir).recent("", now: later).isEmpty)
-        #expect(FileManager.default.fileExists(atPath: blobs.appendingPathComponent(reused.file).path))
-        Store.write(dir, "index.json", Data("[]".utf8))
+        #expect(!FileManager.default.fileExists(atPath: blobs.appendingPathComponent(reused.file).path))
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("index.json"))
         try Data("orphan".utf8).write(to: blobs.appendingPathComponent("orphan.txt"))
         _ = Clipboard.load(dir: dir)
         #expect(!FileManager.default.fileExists(atPath: blobs.appendingPathComponent("orphan.txt").path))
+    }
+
+    @MainActor @Test func clipStoreRollsBackFailedIndexWrite() throws {
+        let dir = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("index.json"), withIntermediateDirectories: true)
+        let clipboard = Clipboard(dir: dir)
+        clipboard.record(kind: .text, data: Data("private text".utf8), now: 0)
+        #expect(clipboard.recent("", now: 0).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("blobs").path).isEmpty)
     }
 
     @Test func translateConfigFallsBackWhenUnusable() throws {
