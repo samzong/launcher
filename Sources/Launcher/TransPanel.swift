@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 enum TransMetrics {
     static let width: CGFloat = 440
@@ -151,7 +152,7 @@ private func display(_ value: Translation?) -> (text: String, color: NSColor, re
     case .done(let text): (text, .labelColor, true)
     case .failed(let message): (message, .systemRed, false)
     case .pending: ("Translating…", .tertiaryLabelColor, false)
-    case nil: ("Press ⏎ to translate", .tertiaryLabelColor, false)
+    case nil: ("Press ⌘⏎ to translate", .tertiaryLabelColor, false)
     }
 }
 
@@ -414,6 +415,15 @@ final class TransPanel: NSPanel, NSWindowDelegate, NSTextViewDelegate {
         clipboard.paste(clipboard.place(text), into: caller)
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown, event.modifierFlags.contains(.command),
+           [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode)) {
+            translate()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     func textDidChange(_: Notification) {
         let text = content.source.string
         translator.retarget(text)
@@ -426,6 +436,7 @@ final class TransPanel: NSPanel, NSWindowDelegate, NSTextViewDelegate {
     func textView(_: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
+            guard NSApp.currentEvent?.modifierFlags.contains(.command) == true else { return false }
             translate()
         case #selector(NSResponder.cancelOperation(_:)):
             dismiss()
