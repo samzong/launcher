@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum Kind {
@@ -18,18 +19,19 @@ struct Entry {
 
 enum Catalog {
     static let paneRoot = "/System/Library/ExtensionKit/Extensions"
+    static let defaultExtras = ["com.apple.finder"].compactMap {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)?.path
+    }
     private static let paneExtensionPoint = "com.apple.Settings.extension.ui"
     private static let paneNames = ["com.apple.Battery-Settings.extension": "Battery"]
     private static let skippedPanes: Set<String> = ["com.apple.HeadphoneSettings"]
 
-    static func scan(roots: [String]? = nil, panes: String? = paneRoot) -> [Entry] {
+    static func scan(roots: [String]? = nil, panes: String? = paneRoot, extras: [String] = defaultExtras) -> [Entry] {
         var seen = Set<NSString>()
         var apps: [Entry] = []
-        for root in roots ?? defaultRoots {
-            for path in bundles(in: root, depth: 0) {
-                guard let entry = parse(path), seen.insert(entry.id as NSString).inserted else { continue }
-                apps.append(entry)
-            }
+        for path in (roots ?? defaultRoots).flatMap({ bundles(in: $0, depth: 0) }) + extras {
+            guard let entry = parse(path), seen.insert(entry.id as NSString).inserted else { continue }
+            apps.append(entry)
         }
         for path in panes.map({ bundles(in: $0, depth: 1, ext: "appex") }) ?? [] {
             guard let entry = pane(path), seen.insert(entry.id as NSString).inserted else { continue }

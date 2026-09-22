@@ -40,20 +40,25 @@ private func app(_ id: String, _ name: String) -> Entry {
             }
             try writeBundle(root, path, values)
         }
-        #expect(Catalog.scan(roots: [root.path], panes: nil).map(\.name) == ["Ghost", "Nested", "Shout", "Visible", "Quit Launcher"])
+        #expect(Catalog.scan(roots: [root.path], panes: nil, extras: []).map(\.name) == ["Ghost", "Nested", "Shout", "Visible", "Quit Launcher"])
 
         try writeBundle(root, "Pane.appex", ["CFBundleIdentifier": "dev.test.pane", "CFBundleName": "Pane",
                                              "EXAppExtensionAttributes": ["EXExtensionPointIdentifier": "com.apple.Settings.extension.ui"]])
         try writeBundle(root, "Widget.appex", ["CFBundleIdentifier": "dev.test.widget", "CFBundleName": "Widget",
                                                "EXAppExtensionAttributes": ["EXExtensionPointIdentifier": "com.apple.widgetkit-extension"]])
-        let panes = Catalog.scan(roots: [], panes: root.path)
+        let panes = Catalog.scan(roots: [], panes: root.path, extras: [])
         #expect(panes.map(\.name) == ["Pane", "Quit Launcher"])
         #expect(panes.first?.kind == .settings)
 
         try writeBundle(root, "Fresh.app", ["CFBundleName": "Fresh"])
-        #expect(Catalog.scan(roots: [root.path], panes: nil).contains { $0.name == "Fresh" })
+        #expect(Catalog.scan(roots: [root.path], panes: nil, extras: []).contains { $0.name == "Fresh" })
         try FileManager.default.removeItem(at: root.appendingPathComponent("Fresh.app"))
-        #expect(!Catalog.scan(roots: [root.path], panes: nil).contains { $0.name == "Fresh" })
+        #expect(!Catalog.scan(roots: [root.path], panes: nil, extras: []).contains { $0.name == "Fresh" })
+
+        try writeBundle(root, "Core/Finder.app", ["CFBundleIdentifier": "com.apple.finder", "CFBundleName": "Finder"])
+        let finder = root.appendingPathComponent("Core/Finder.app").path
+        #expect(Catalog.scan(roots: [], panes: nil, extras: [finder]).map(\.id) == ["com.apple.finder", "internal.quit"])
+        #expect(Catalog.scan(roots: [root.path], panes: nil, extras: [finder]).filter { $0.id == "com.apple.finder" }.count == 1)
     }
 
     @Test func catalogMalformedPlists() throws {
