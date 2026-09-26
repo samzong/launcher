@@ -191,7 +191,11 @@ final class Clipboard {
                            done: @escaping (String) -> Void) {
         let board = NSPasteboard.general
         guard board.changeCount == before, left > 0 else {
-            let text = board.changeCount == before ? "" : board.string(forType: .string) ?? ""
+            if board.changeCount == before {
+                resume()
+                return done("")
+            }
+            let text = board.string(forType: .string) ?? ""
             board.clearContents()
             if !saved.isEmpty {
                 board.writeObjects(saved)
